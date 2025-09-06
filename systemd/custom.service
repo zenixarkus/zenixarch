@@ -1,0 +1,21 @@
+[Unit]
+Description=Setup NVIDIA overclocks and OpenRGB lighting
+
+[Service]
+WorkingDirectory=/tmp
+ExecStart=/bin/bash -c '\
+/usr/bin/openrgb --mode static --color 1f13d4 --brightness 100; \
+sleep 1; \
+/usr/bin/openrgb --mode static --color 1f13d4 --brightness 100; \
+if [ ! -d /opt/nvml ]; then \
+    python -m venv /opt/nvml; \
+    chown -R user:user /opt/nvml; \
+    runuser -u user -- /opt/nvml/bin/pip install --upgrade pip; \
+    runuser -u user -- /opt/nvml/bin/pip install nvidia-ml-py; \
+fi; \
+runuser -u user -- /opt/nvml/bin/pip install --upgrade nvidia-ml-py; \
+/opt/nvml/bin/python -c "from pynvml import *; nvmlInit(); myGPU=nvmlDeviceGetHandleByIndex(0); nvmlDeviceSetGpcClkVfOffset(myGPU,210); nvmlDeviceSetMemClkVfOffset(myGPU,3000)" \
+'
+
+[Install]
+WantedBy=multi-user.target
