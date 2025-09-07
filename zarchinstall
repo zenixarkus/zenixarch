@@ -49,7 +49,7 @@ timedatectl set-timezone America/New_York
 # Wipe the disk and create a fresh partition scheme
 sgdisk --zap-all "/dev/$DISK"
 sgdisk -g "$DISK"
-sgdisk -n 1:0:+1G -t 1:ef00 -c 1:"EFI System" "/dev/$DISK"
+sgdisk -n 1:0:+256M -t 1:ef00 -c 1:"EFI System" "/dev/$DISK"
 sgdisk -n 2:0:0 -t 2:8300 -c 2:"Linux filesystem" "/dev/$DISK"
 
 # Format the esp partition with FAT32
@@ -78,6 +78,19 @@ sed -i 's/^#\(ParallelDownloads = 5\)/\1/' /etc/pacman.conf
 # Sync the package database
 pacman -Sy
 
+# Create a Unified Kernel Image (UKI) preset before mkinitcpio ever triggers
+#     - The UEFI will directly boot the UKI so I do not install a bootloader
+#     - UKI's securitywise synergize well with Secure Boot and disk encryption, this is currently the only way to prevent initramfs tampering
+#     - I also disable NVIDIA GSP Firmware in the kernel options thanks to stuttering in games
+mkdir -p /mnt/boot/EFI/BOOT
+cat > /mnt/etc/mkinitcpio.d/linux.preset <<UKI
+    ALL_config="/etc/mkinitcpio.conf"
+    ALL_kver="/boot/vmlinuz-linux"
+    PRESETS=('default')
+    default_uki="/boot/EFI/BOOT/BOOTX64.EFI"
+    default_options="cryptdevice=UUID=$(blkid -s UUID -o value "/dev/${DISK}p2"):cryptroot root=/dev/mapper/cryptroot rw nvidia.NVreg_EnableGpuFirmware=0 nvidia.NVreg_UsePageAttributeTable=1"
+UKI
+
 # Install the base system then my preferred packages
 pacstrap /mnt base btrfs-progs intel-ucode iwd linux{,-firmware-{intel,realtek}} nvidia pipewire-{jack,pulse} sbctl \
               firefox foot git hypr{land,paper,shot} keepassxc neovim noto-fonts open{doas,rgb} signal-desktop
@@ -86,25 +99,6 @@ pacstrap /mnt base btrfs-progs intel-ucode iwd linux{,-firmware-{intel,realtek}}
 
 # Set the filesystem table
 genfstab -U /mnt >> /mnt/etc/fstab
-
-# Setup kernel options, including NVIDIA ones for gaming performance
-mkdir -p /mnt/etc/kernel
-echo "cryptdevice=UUID=$(blkid -s UUID -o value "/dev/${DISK}p2"):cryptroot root=/dev/mapper/cryptroot rw nvidia.NVreg_EnableGpuFirmware=0 nvidia.NVreg_UsePageAttributeTable=1" > /mnt/etc/kernel/cmdline
-
-# Create a Unified Kernel Image (UKI) preset
-#     - The UEFI will directly boot the UKI so I do not install a bootloader
-#     - UKI's securitywise synergize well with Secure Boot and disk encryption, this is currently the only way to prevent initramfs tampering
-cat > /mnt/etc/mkinitcpio.d/linux.preset <<UKI
-    ALL_config="/etc/mkinitcpio.conf"
-    ALL_kver="/boot/vmlinuz-linux"
-    PRESETS=('default')
-    default_uki="/boot/EFI/BOOT/BOOTX64.EFI"
-    default_options="--cmdline /etc/kernel/cmdline"
-UKI
-
-# Add encrypt to mkinitcpio hooks
-mkdir -p /mnt/boot/EFI/BOOT
-sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block encrypt filesystems fsck)/' /mnt/etc/mkinitcpio.conf
 
 # Set locale
 sed -i 's/^#\(en_US.UTF-8 UTF-8\)/\1/' /mnt/etc/locale.gen
@@ -132,11 +126,14 @@ cat > /mnt/etc/systemd/system/getty@tty1.service.d/override.conf <<'GETTY'
     ExecStart=-/sbin/agetty -o '-- \\u' --autologin user --noreset --noclear - $TERM
 GETTY
 
+# Configure PAM no-password login because there's little security loss for extra convenience
+sed -i '/pam_nologin.so/i auth       sufficient   pam_succeed_if.so user = user' /mnt/etc/pam.d/login
+
 # Enable colored output for pacman
 sed -i 's/^#\(Color\)/\1/' /mnt/etc/pacman.conf
 
-# Configure PAM no-password login because there's little security loss for extra convenience
-sed -i '/pam_nologin.so/i auth       sufficient   pam_succeed_if.so user = user' /mnt/etc/pam.d/login
+# Add encrypt to mkinitcpio hooks
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block encrypt filesystems fsck)/' /mnt/etc/mkinitcpio.conf
 
 # Fix ~/.pulse-cookie bug with Steam
 sed -i 's|^; cookie-file =.*|cookie-file = /home/user/.config/pulse/cookie|' /mnt/etc/pulse/client.conf
@@ -180,14 +177,16 @@ system() {
     # Mark deps
     pacman -D --asdeps noto-fonts pipewire-jack
 
-    # Create the UKI
+    # Recreate the UKI as mkinitcpio.conf was changed
     mkinitcpio -p linux
 
     # Setup secure boot keys and sign the UKI
+    #     - I would avoid enrolling Microsoft's certs to have just custom keys, but as always being an nvidia user comes back to haunt me... out-of-tree kernel modules get rejected and that includes nvidia modules... *sigh*
     if sbctl status | grep -q "Setup Mode:.*Enabled"; then
         sbctl create-keys
         sbctl enroll-keys --microsoft
         sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
+        sbctl sign -s /boot/vmlinuz-linux
     else
         printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
     fi
