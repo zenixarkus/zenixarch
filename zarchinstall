@@ -1,0 +1,279 @@
+#!/bin/bash
+set -euo pipefail
+
+########### SAFETY CHECKS ##########
+
+# Don't bother if this is already my installation
+if [ "$HOSTNAME" == "zenixark" ]; then
+    printf "\e[31mError: Nice try\e[0m"
+    exit 1
+fi
+
+# Verify internet access
+if ! ping -c 1 ping.archlinux.org &>/dev/null; then
+    printf "\e[31mError: Not connected to the internet\e[0m"
+    exit 1
+fi
+
+# Convert arguments to variables and verify them
+while [ "$#" -gt 0 ]; do
+    case $1 in
+        -d) DISK="$2"; shift ;;
+        -p) USER_PASS="$2"; shift ;;
+        -n) NEXTDNS="$2"; shift ;;
+        *) echo "Unknown argument: $1"; exit 1 ;;
+    esac
+    shift
+done
+: "$DISK:?" "$USER_PASS:?" "$NEXTDNS:?"
+
+# Verify intention
+read -rp $"\e[31mThis script will wipe every little thing on your disk and reformat...\nAlso, you should know EVERYTHING this script does before running it because it makes a LOT of assumptions...\nType 'IK' to continue: \e[0m" CONFIRM
+if [ "$CONFIRM" != "IK" ]; then
+    printf "\e[31mError: You didn't confirm you knew\e[0m"
+    exit 1
+fi
+
+# Check if affected partitions are already mounted
+if mountpoint -q /mnt; then
+    umount -R /mnt
+    cryptsetup close cryptroot
+fi
+
+# Set the ISO timezone
+timedatectl set-timezone America/New_York
+
+
+########### DISK SETUP ##########
+
+# Wipe the disk and create a fresh partition scheme
+sgdisk --zap-all "/dev/$DISK"
+sgdisk -g "$DISK"
+sgdisk -n 1:0:+1G -t 1:ef00 -c 1:"EFI System" "/dev/$DISK"
+sgdisk -n 2:0:0 -t 2:8300 -c 2:"Linux filesystem" "/dev/$DISK"
+
+# Format the esp partition with FAT32
+mkfs.fat -F 32 "/dev/${DISK}p1"
+
+# Create a hardened LUKS-encrypted container on the root partition
+echo "$USER_PASS" | cryptsetup -q luksFormat -h sha512 -i 5000 -s 512 "/dev/${DISK}p2"
+echo "$USER_PASS" | cryptsetup open "/dev/${DISK}p2" cryptroot
+
+# Format the container with Btrfs
+#     - No subvolumes because I just don't like them and I don't use snapshots
+mkfs.btrfs -f /dev/mapper/cryptroot
+
+# Mount the formatted partitions with optimized settings
+mount -o defaults,noatime,compress-force=zstd /dev/mapper/cryptroot /mnt
+mkdir -p /mnt/boot
+mount -o defaults,noatime "/dev/${DISK}p1" /mnt/boot
+
+
+########### BOOTSTRAPPING ##########
+
+# Optimize pacman DL speed with an updated mirrorlist and parallel downloads
+reflector -c US -p https -a 12 -l 20 -f 5 --sort rate --save /etc/pacman.d/mirrorlist
+sed -i 's/^#\(ParallelDownloads = 5\)/\1/' /etc/pacman.conf
+
+# Sync the package database
+pacman -Sy
+
+# Install the base system then my preferred packages
+pacstrap /mnt base btrfs-progs intel-ucode iwd linux{,-firmware-{intel,realtek}} nvidia pipewire-{jack,pulse} sbctl \
+              firefox foot git hypr{land,paper,shot} keepassxc neovim noto-fonts open{doas,rgb} signal-desktop
+
+########### CONFIGURATION ##########
+
+# Set the filesystem table
+genfstab -U /mnt >> /mnt/etc/fstab
+
+# Setup kernel options, including NVIDIA ones for gaming performance
+mkdir -p /mnt/etc/kernel
+echo "cryptdevice=UUID=$(blkid -s UUID -o value "/dev/${DISK}p2"):cryptroot root=/dev/mapper/cryptroot rw nvidia.NVreg_EnableGpuFirmware=0 nvidia.NVreg_UsePageAttributeTable=1" > /mnt/etc/kernel/cmdline
+
+# Create a Unified Kernel Image (UKI) preset
+#     - The UEFI will directly boot the UKI so I do not install a bootloader
+#     - UKI's securitywise synergize well with Secure Boot and disk encryption, this is currently the only way to prevent initramfs tampering
+cat > /mnt/etc/mkinitcpio.d/linux.preset <<UKI
+    ALL_config="/etc/mkinitcpio.conf"
+    ALL_kver="/boot/vmlinuz-linux"
+    PRESETS=('default')
+    default_uki="/boot/EFI/BOOT/BOOTX64.EFI"
+    default_options="--cmdline /etc/kernel/cmdline"
+UKI
+
+# Add encrypt to mkinitcpio hooks
+mkdir -p /mnt/boot/EFI/BOOT
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block encrypt filesystems fsck)/' /mnt/etc/mkinitcpio.conf
+
+# Set locale
+sed -i 's/^#\(en_US.UTF-8 UTF-8\)/\1/' /mnt/etc/locale.gen
+echo "LANG=en_US.UTF-8" > /mnt/etc/locale.conf
+
+# Set the hostname to something epic
+echo zenixark > /mnt/etc/hostname
+
+# Make the user a doas-er
+printf "permit persist user\n" > /mnt/etc/doas.conf
+chmod 600 /mnt/etc/doas.conf
+
+# Allow iwd to connect to the internet
+mkdir -p /mnt/etc/iwd
+cat > /mnt/etc/iwd/main.conf <<IWD
+    [General]
+    EnableNetworkConfiguration=true
+IWD
+
+# Set getty to autologin the user for convenience
+mkdir -p /mnt/etc/systemd/system/getty@tty1.service.d
+cat > /mnt/etc/systemd/system/getty@tty1.service.d/override.conf <<'GETTY'
+    [Service]
+    ExecStart=
+    ExecStart=-/sbin/agetty -o '-- \\u' --autologin user --noreset --noclear - $TERM
+GETTY
+
+# Enable colored output for pacman
+sed -i 's/^#\(Color\)/\1/' /mnt/etc/pacman.conf
+
+# Configure PAM no-password login because there's little security loss for extra convenience
+sed -i '/pam_nologin.so/i auth       sufficient   pam_succeed_if.so user = user' /mnt/etc/pam.d/login
+
+# Fix ~/.pulse-cookie bug with Steam
+sed -i 's|^; cookie-file =.*|cookie-file = /home/user/.config/pulse/cookie|' /mnt/etc/pulse/client.conf
+
+# Disable coredumps as they're HUGE and I don't care about them
+sed -i 's/^#Storage=.*/Storage=none/' /mnt/etc/systemd/coredump.conf
+sed -i 's/^#ProcessSizeMax=.*/ProcessSizeMax=0/' /mnt/etc/systemd/coredump.conf
+
+# Configure my NextDNS profile via resolved
+sed -i "s|^#DNS=.*|DNS=45.90.28.0#$NEXTDNS.dns.nextdns.io DNS=45.90.30.0#$NEXTDNS.dns.nextdns.io DNS=2a07:a8c0::#$NEXTDNS.dns.nextdns.io DNS=2a07:a8c1::#$NEXTDNS.dns.nextdns.io|" /mnt/etc/systemd/resolved.conf
+sed -i 's/^#FallbackDNS=.*/FallbackDNS=/' /mnt/etc/systemd/resolved.conf
+sed -i 's/^#Domains=.*/Domains=~/' /mnt/etc/systemd/resolved.conf
+sed -i 's/^#DNSOverTLS=.*/DNSOverTLS=yes/' /mnt/etc/systemd/resolved.conf
+
+
+########## SYSTEM SETUP ##########
+
+system() {
+    # Set my timezone
+    ln -sf "/usr/share/zoneinfo/America/New_York" /etc/localtime
+
+    # Sync hardware clock to system clock
+    hwclock --systohc
+
+    # Enable NTP
+    timedatectl set-ntp true
+
+    # Generate the locale
+    locale-gen
+
+    # Lock root for extra security
+    passwd -l root
+
+    # Create a new user with a generic name
+    useradd -m user
+    echo "user:$USER_PASS" | chpasswd
+
+    # Symlink .cache to tmp to wipe it on shutdown
+    ln -sfn /tmp /home/user/.cache
+
+    # Mark deps
+    pacman -D --asdeps noto-fonts pipewire-jack
+
+    # Create the UKI
+    mkinitcpio -p linux
+
+    # Setup secure boot keys and sign the UKI
+    if sbctl status | grep -q "Setup Mode:.*Enabled"; then
+        sbctl create-keys
+        sbctl enroll-keys --microsoft
+        sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
+    else
+        printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
+    fi
+
+    # Install mullvad-vpn-cli
+    pacman -S --noconfirm base-devel
+    echo "user ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/00_user
+    sudo -u user git clone https://aur.archlinux.org/mullvad-vpn-cli.git /tmp/mullvad
+    cd /tmp/mullvad
+    sudo -u user makepkg -si --noconfirm
+    pacman -Rcns --noconfirm base-devel mullvad-vpn-cli-debug
+    rm -rf /home/user/.cargo /home/user/.config/go /etc/sudoers.d
+}
+
+
+########## DOTFILES SETUP ##########
+
+# Stage dotfiles into the new install
+cp -r $(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd) /mnt/.dotfiles/
+
+dotfiles() {
+    # Move the dotfiles into place
+    mv /.dotfiles /home/user
+
+    # Setup bash
+    ln -sf /home/user/.dotfiles/bash/bashrc /home/user/.bashrc
+    ln -sf /home/user/.dotfiles/bash/bash_profile /home/user/.bash_profile
+
+    # Setup firefox
+    mkdir -p /home/user/.mozilla/firefox/user
+    ln -sfn /home/user/.dotfiles/firefox/chrome /home/user/.mozilla/firefox/user/chrome
+    ln -sf /home/user/.dotfiles/firefox/installs.ini /home/user/.mozilla/firefox/installs.ini
+    ln -sf /home/user/.dotfiles/firefox/profiles.ini /home/user/.mozilla/firefox/profiles.ini
+    curl https://raw.githubusercontent.com/arkenfox/user.js/master/user.js > /home/user/.mozilla/firefox/user/user.js
+    cat /home/user/.dotfiles/firefox/user-overrides.js >> /home/user/.mozilla/firefox/user/user.js
+
+    # Setup git
+    ln -sf /home/user/.dotfiles/git/gitconfig /home/user/.gitconfig
+
+    # Setup hyprland
+    mkdir -p /home/user/.config/hypr
+    ln -sf /home/user/.dotfiles/hypr/hyprland.conf /home/user/.config/hypr/hyprland.conf
+    ln -sf /home/user/.dotfiles/hypr/hyprpaper.conf /home/user/.config/hypr/hyprpaper.conf
+
+    # Setup neovim
+    mkdir -p /home/user/.config/nvim
+    ln -sf /home/user/.dotfiles/nvim/init.lua /home/user/.config/nvim/init.lua
+
+    # Setup custom.service
+    systemctl link /home/user/.dotfiles/systemd/custom.service
+
+    # Ensure the user owns their own home
+    chown -R user:user /home/user
+}
+
+# I like doing this instead of a giant chroot heredoc preserve syntax highlighting
+export USER_PASS
+export -f system dotfiles
+arch-chroot /mnt /bin/bash -e <<CHROOT
+system
+dotfiles
+CHROOT
+
+
+########## SERVICES AND TIMERS ##########
+
+# Disable NVIDIA services irrelevant to my desktop
+systemctl disable nvidia-hibernate --root=/mnt
+systemctl disable nvidia-resume --root=/mnt
+systemctl disable nvidia-suspend --root=/mnt
+
+# Enable filesystem maintainence timers
+systemctl enable fstrim.timer --root=/mnt
+systemctl enable btrfs-scrub@-.timer --root=/mnt
+
+# Enable essential services
+systemctl enable custom --root=/mnt
+systemctl enable iwd --root=/mnt
+systemctl enable mullvad-daemon --root=/mnt
+systemctl enable systemd-resolved --root=/mnt
+systemctl enable systemd-timesyncd --root=/mnt
+
+
+########## FINISH ##########
+
+# Unmount and finish
+umount -R /mnt
+cryptsetup close cryptroot
+printf "\e[32mDone! Reboot when ready.\e[0m"

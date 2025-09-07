@@ -1,10 +1,44 @@
-# Zenixark's Arch Linux Dotfiles
-**My very minimalist (pretty much stock) dotfiles + some helper scripts and services**
+# Zenixark's Arch Linux Setup
+**My very personalized and hardened Arch Linux dotfiles + an automated install script that sets up Btrfs, FDE, direct-boot UKI + Secure Boot, DNS, VPN, autologin, dots and more**
 
-> [NOTE]
-> I don't offer an install script for my dotfiles as I (and probably you too) don't consider them interesting enough to justify one.  
-> I prefer using this repo as a backup and set them up with my `zarchinstall` script once per installation instead.
+## Using [`zarchinstall`](./zarchinstall)
+> [WARNING]
+> **This is a REALLY *REALLY* opinionated script that assumes my hardware and philosophy.**  
+> **It's not intended to be reused by others, but if you do then I would very much recommend changing almost everything.**
 
+This script essentially rolls out my entire setup in a one liner, it does a lot so I recommend reading my comments in the script as I explain many of my choices there. I don't offer a dedicated install script for my dotfiles as I (and probably you too) don't consider them interesting enough to justify one.
+
+First ensure that Setup Mode for Secure Boot is on, then from the Arch ISO live environment:
+1. `iwctl --passphrase <wifi password> station <wifi interface> connect <wifi name>`
+2. `git clone https://zenixark.com/zenixark/zarchsetup.git`
+3. `cd zarchsetup`
+4. `./zarchinstall -d <disk, like nvme0np1> -p <a strong password> -n <nextdns id>`
+
+## Dotfiles
+- **bash**
+  - [`bash_profile`](./bash/bash_profile) -- All it does is autostart hyprland
+  - [`bashrc`](./bash/bashrc) -- Various QOL aliases & functions especially for file management
+- **bin**
+  - [`leftovers`](./bin/leftovers) -- Scans common junk dirs and outputs files not in my custom filters
+- **firefox**
+  - [`chrome`](./firefox/chrome) -- [firefox-gnome-theme](https://github.com/rafaelmardojai/firefox-gnome-theme)
+  - [`installs.ini`](./firefox/installs.ini)
+  - [`profiles.ini`](./firefox/profiles.ini)
+  - [`user-overrides.js`](./firefox/user-overrides.js) -- Extra hardening & personal touches appended to [arkenfox user.js](https://github.com/arkenfox/user.js)
+- **git**
+  - [`gitconfig`](./git/gitconfig)
+- **hypr**
+  - [`hyprland.conf`](./hypr/hyprland.conf) -- Stock minus a few aesthetic changes and binding apps to number keys
+  - [`hyprpaper.conf`](./hypr/hyprpaper.conf)
+  - [`sigiluw.png`](./hypr/sigiluw.png)
+  - [`sigilw.png`](./hypr/sigilw.png)
+- **nvim**
+  - [`init.lua`](./nvim/init.lua)
+- **systemd**
+  - [`custom.service`](./systemd/custom.service) -- Sets GPU overclocks and static RGB colors (I have to) on startup
+
+
+## Software and Hardware
 <pre>
 [user@zenixark ~]$ fastfetch
                   -`                     user@zenixark
@@ -28,37 +62,6 @@
 .`                                 `/    Disk (/): 2.29 GiB / 930.50 GiB (0%) - btrfs
 [user@zenixark ~]$ doas pacman -Rcns fastfetch
 </pre>
-
-## Repo Contents
-<pre>
-[user@zenixark ~]$ tree
-~
-└── .dotfiles
-    ├── bash
-    │   ├── bash_profile      # All it does is autostart Hyprland 
-    │   └── bashrc            # Various QOL aliases & functions especially for file management
-    ├── bin
-    │   └── leftovers         # Scans common junk dirs and outputs files not in custom filters
-    ├── firefox
-    │   ├── chrome            # <a href="https://github.com/rafaelmardojai/firefox-gnome-theme">firefox-gnome-theme</a>
-    │   ├── installs.ini
-    │   ├── profiles.ini
-    │   └── user-overrides.js # Extra hardening & personal touches appended to the <a href="https://github.com/arkenfox/user.js">arkenfox user.js</a>
-    ├── git
-    │   └── gitconfig
-    ├── hypr
-    │   ├── hyprland.conf     # Stock minus a few aesthetic changes and binding apps to number keys
-    │   ├── hyprpaper.conf
-    │   ├── sigiluw.png
-    │   └── sigilw.png
-    ├── nvim
-    │   └── init.lua
-    └── systemd
-        └── custom.service    # Sets GPU overclocks and static RGB colors (I have to) on startup
-[user@zenixark ~]$ doas pacman -Rcns tree
-</pre>
-
-## Software Preferences
 I generally prefer to avoid proprietary and GUI nonsense whenever possible in favor of FOSS and CLI stuff respectively.
 <pre>
 [user@zenixark ~]$ pacman -Qqe
@@ -71,7 +74,7 @@ hyprland                      # Window Manager
 hyprpaper                     # Wallpaper
 hyprshot                      # Screenshots
 intel-ucode
-iwd
+iwd                           # Wi-Fi
 keepassxc                     # Password Manager
 linux
 linux-firmware-intel
@@ -79,7 +82,7 @@ linux-firmware-realtek
 mullvad-vpn-cli
 neovim                        # Text Editor
 nvidia
-opendoas
+opendoas                      # Instead of sudo
 openrgb                       # See my <a href="./systemd/custom.service">custom.service<a>
 pipewire-pulse
 sbctl
