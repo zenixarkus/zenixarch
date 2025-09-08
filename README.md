@@ -21,7 +21,6 @@ First ensure that Setup Mode for Secure Boot is on, then from the Arch ISO live 
 - **bin**
   - [`leftovers`](./bin/leftovers) -- Scans common junk dirs and outputs files not in my custom filters
 - **firefox**
-  - [`chrome`](./firefox/chrome) -- [firefox-gnome-theme](https://github.com/rafaelmardojai/firefox-gnome-theme)
   - [`installs.ini`](./firefox/installs.ini)
   - [`profiles.ini`](./firefox/profiles.ini)
   - [`user-overrides.js`](./firefox/user-overrides.js) -- Extra hardening & personal touches appended to [arkenfox user.js](https://github.com/arkenfox/user.js)

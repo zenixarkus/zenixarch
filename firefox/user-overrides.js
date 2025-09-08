@@ -5,13 +5,6 @@
 // Sets my preferred toolbar layout
 user_pref("browser.uiCustomization.state", "{\"placements\":{\"widget-overflow-fixed-list\":[],\"unified-extensions-area\":[],\"nav-bar\":[\"back-button\",\"forward-button\",\"vertical-spacer\",\"urlbar-container\",\"fxa-toolbar-menu-button\",\"ublock0_raymondhill_net-browser-action\",\"unified-extensions-button\"],\"toolbar-menubar\":[\"menubar-items\"],\"TabsToolbar\":[\"tabbrowser-tabs\"],\"vertical-tabs\":[],\"PersonalToolbar\":[\"personal-bookmarks\"]},\"seen\":[],\"dirtyAreaCache\":[],\"currentVersion\":23,\"newElementCount\":3}");
 
-// firefox-gnome-theme user.js
-user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
-user_pref("browser.uidensity", 0);
-user_pref("svg.context-properties.content.enabled", true);
-user_pref("browser.theme.dark-private-windows", false);
-user_pref("widget.gtk.rounded-bottom-corners.enabled", true);
-
 // Disable ugly UI elements
 user_pref("browser.tabs.inTitlebar", 0);
 user_pref("browser.toolbars.bookmarks.visibility", "never");

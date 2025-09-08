@@ -217,7 +217,6 @@ dotfiles() {
 
     # Setup firefox
     mkdir -p /home/user/.mozilla/firefox/user
-    ln -sfn /home/user/.dotfiles/firefox/chrome /home/user/.mozilla/firefox/user/chrome
     ln -sf /home/user/.dotfiles/firefox/installs.ini /home/user/.mozilla/firefox/installs.ini
     ln -sf /home/user/.dotfiles/firefox/profiles.ini /home/user/.mozilla/firefox/profiles.ini
     curl https://raw.githubusercontent.com/arkenfox/user.js/master/user.js > /home/user/.mozilla/firefox/user/user.js
