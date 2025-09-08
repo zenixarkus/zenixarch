@@ -82,10 +82,10 @@ pacman -Sy
 #     - The UEFI will directly boot the UKI so I do not install a bootloader
 #     - UKI's securitywise synergize well with Secure Boot and disk encryption to prevent initramfs tampering
 #     - I also disable NVIDIA GSP Firmware in the kernel options thanks to stuttering in games
-mkdir -p /mnt/boot/EFI/BOOT
+mkdir -p /mnt/boot/EFI/BOOT /mnt/etc/mkinitcpio.d
 cat > /mnt/etc/mkinitcpio.d/linux.preset <<UKI
     ALL_config="/etc/mkinitcpio.conf"
-    ALL_kver="/boot/vmlinuz-linux"
+    ALL_kver="/usr/lib/modules/vmlinuz"
     PRESETS=('default')
     default_uki="/boot/EFI/BOOT/BOOTX64.EFI"
     default_options="cryptdevice=UUID=$(blkid -s UUID -o value "/dev/${DISK}p2"):cryptroot root=/dev/mapper/cryptroot rw nvidia.NVreg_EnableGpuFirmware=0 nvidia.NVreg_UsePageAttributeTable=1"
@@ -186,7 +186,6 @@ system() {
         sbctl create-keys
         sbctl enroll-keys --tpm-eventlog
         sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
-        sbctl sign -s /boot/vmlinuz-linux
     else
         printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
     fi
@@ -205,7 +204,7 @@ system() {
 ########## DOTFILES SETUP ##########
 
 # Stage dotfiles into the new install
-cp -r $(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd) /mnt/.dotfiles/
+cp -r "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" /mnt/.dotfiles/
 
 dotfiles() {
     # Move the dotfiles into place
