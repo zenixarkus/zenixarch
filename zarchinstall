@@ -80,7 +80,7 @@ pacman -Sy
 
 # Create a Unified Kernel Image (UKI) preset before mkinitcpio ever triggers
 #     - The UEFI will directly boot the UKI so I do not install a bootloader
-#     - UKI's securitywise synergize well with Secure Boot and disk encryption, this is currently the only way to prevent initramfs tampering
+#     - UKI's securitywise synergize well with Secure Boot and disk encryption to prevent initramfs tampering
 #     - I also disable NVIDIA GSP Firmware in the kernel options thanks to stuttering in games
 mkdir -p /mnt/boot/EFI/BOOT
 cat > /mnt/etc/mkinitcpio.d/linux.preset <<UKI
@@ -180,11 +180,11 @@ system() {
     # Recreate the UKI as mkinitcpio.conf was changed
     mkinitcpio -p linux
 
-    # Setup secure boot keys and sign the UKI
-    #     - I would avoid enrolling Microsoft's certs to have just custom keys, but as always being an nvidia user comes back to haunt me... out-of-tree kernel modules get rejected and that includes nvidia modules... *sigh*
+    # Setup custom Secure Boot keys and sign the UKI
+    #     - I use sbctl's experimental TPM Eventlog method as just enrolling the keys alone stops my GPU's GOP driver initializing leaving me with no boot video until the kernel modules load, then it's just a framebuffer with no hardware acceleration
     if sbctl status | grep -q "Setup Mode:.*Enabled"; then
         sbctl create-keys
-        sbctl enroll-keys --microsoft
+        sbctl enroll-keys --tpm-eventlog
         sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
         sbctl sign -s /boot/vmlinuz-linux
     else
