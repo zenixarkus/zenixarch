@@ -92,8 +92,7 @@ cat > /mnt/etc/mkinitcpio.d/linux.preset <<UKI
 UKI
 
 # Install the base system then my preferred packages
-pacstrap /mnt base btrfs-progs intel-ucode iwd linux{,-firmware-{intel,realtek}} nvidia pipewire-{jack,pulse} sbctl \
-              firefox foot git hypr{land,paper,shot} keepassxc neovim noto-fonts open{doas,rgb} signal-desktop
+cat "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/packages.txt | pacstrap /mnt -
 
 ########### CONFIGURATION ##########
 
