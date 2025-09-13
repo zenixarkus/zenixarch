@@ -47,7 +47,7 @@ extract() {
             *.tgz)       tar xvzf "$1" ;;
             *.tar.xz)    tar xvJf "$1" ;;
             *.tar)       tar xvf "$1" ;;
-            *.zip)       doas pacman -S unzip && unzip "$1" && doas pacman -Rcns unzip ;;
+            *.zip)       doas pacman -S --noconfirm unzip && unzip "$1" && doas pacman -Rcns --noconfirm unzip ;;
             *)           echo "'$1' cannot be extracted" ;;
         esac
     fi

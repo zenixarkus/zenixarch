@@ -190,15 +190,6 @@ system() {
     else
         printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
     fi
-
-    # Install mullvad-vpn-cli
-    pacman -S --noconfirm base-devel
-    echo "user ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/00_user
-    sudo -u user git clone https://aur.archlinux.org/mullvad-vpn-cli.git /tmp/mullvad
-    cd /tmp/mullvad
-    sudo -u user makepkg -si --noconfirm
-    pacman -Rcns --noconfirm base-devel mullvad-vpn-cli-debug
-    rm -rf /home/user/.cargo /home/user/.config/go /etc/sudoers.d
 }
 
 
@@ -237,8 +228,10 @@ dotfiles() {
     ln -sf /home/user/.zenixarch/dotfiles/nvim/init.lua /home/user/.config/nvim/init.lua
 
     # Setup custom services
+    #     - I will likely seperate wireguard setup later on as this service will fail on reboot unless you add any configs to /etc/wireguard/configs
     systemctl link /home/user/.zenixarch/systemd/overclock.service
     systemctl link /home/user/.zenixarch/systemd/rgb.service
+    systemctl link /home/user/.zenixarch/systemd/wg.service
 
     # Ensure the user owns their own home
     chown -R user:user /home/user
@@ -265,14 +258,15 @@ systemctl enable fstrim.timer --root=/mnt
 systemctl enable btrfs-scrub@-.timer --root=/mnt
 
 # Enable essential services
+systemctl enable iptables --root=/mnt
 systemctl enable iwd --root=/mnt
-systemctl enable mullvad-daemon --root=/mnt
 systemctl enable systemd-resolved --root=/mnt
 systemctl enable systemd-timesyncd --root=/mnt
 
 # Enable custom services
 systemctl enable overclock --root=/mnt
 systemctl enable rgb --root=/mnt
+systemctl enable wg --root=/mnt
 
 
 ########## FINISH ##########

@@ -19,3 +19,4 @@ openrgb
 pipewire-pulse
 sbctl
 signal-desktop
+wireguard-tools

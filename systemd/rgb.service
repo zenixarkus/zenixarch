@@ -3,7 +3,7 @@ Description=Set OpenRGB lighting
 
 [Service]
 WorkingDirectory=/tmp
-ExecStart=/bin/bash -c '/usr/bin/openrgb --mode static --color 1f13d4 --brightness 100 && sleep 1 && /usr/bin/openrgb --mode static --color 1f13d4 --brightness 100'
+ExecStart=/bin/bash -c 'openrgb --mode static --color 1f13d4 --brightness 100 && sleep 1 && openrgb --mode static --color 1f13d4 --brightness 100'
 
 [Install]
 WantedBy=multi-user.target
