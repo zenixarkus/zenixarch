@@ -1,12 +1,8 @@
 [Unit]
-Description=Setup NVIDIA overclocks and OpenRGB lighting
+Description=Set NVIDIA overclocks
 
 [Service]
-WorkingDirectory=/tmp
 ExecStart=/bin/bash -c '\
-/usr/bin/openrgb --mode static --color 1f13d4 --brightness 100; \
-sleep 1; \
-/usr/bin/openrgb --mode static --color 1f13d4 --brightness 100; \
 if [ ! -d /opt/nvml ]; then \
     python -m venv /opt/nvml; \
     chown -R user:user /opt/nvml; \

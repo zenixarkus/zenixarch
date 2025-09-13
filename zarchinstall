@@ -236,8 +236,9 @@ dotfiles() {
     mkdir -p /home/user/.config/nvim
     ln -sf /home/user/.zenixarch/dotfiles/nvim/init.lua /home/user/.config/nvim/init.lua
 
-    # Setup custom.service
-    systemctl link /home/user/.zenixarch/systemd/custom.service
+    # Setup custom services
+    systemctl link /home/user/.zenixarch/systemd/overclock.service
+    systemctl link /home/user/.zenixarch/systemd/rgb.service
 
     # Ensure the user owns their own home
     chown -R user:user /home/user
@@ -264,11 +265,14 @@ systemctl enable fstrim.timer --root=/mnt
 systemctl enable btrfs-scrub@-.timer --root=/mnt
 
 # Enable essential services
-systemctl enable custom --root=/mnt
 systemctl enable iwd --root=/mnt
 systemctl enable mullvad-daemon --root=/mnt
 systemctl enable systemd-resolved --root=/mnt
 systemctl enable systemd-timesyncd --root=/mnt
+
+# Enable custom services
+systemctl enable overclock --root=/mnt
+systemctl enable rgb --root=/mnt
 
 
 ########## FINISH ##########
