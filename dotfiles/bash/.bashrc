@@ -6,8 +6,8 @@
 [[ "$(whoami)" = "root" ]] && return
 [[ -z "$FUNCNEST" ]] && export FUNCNEST=100
 
-# Add ~/.dotfiles/bin to PATH
-PATH="$HOME/.dotfiles/bin:$PATH"
+# Add ~/.zenixarch/bin to PATH
+PATH="$HOME/.zenixarch/bin:$PATH"
 
 # zsh who?
 bind '"\e[A":history-search-backward'

@@ -204,37 +204,39 @@ system() {
 ########## DOTFILES SETUP ##########
 
 # Stage dotfiles into the new install
-cp -r "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" /mnt/.dotfiles/
+cp -r "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" /mnt/.zenixarch/
 
 dotfiles() {
     # Move the dotfiles into place
-    mv /.dotfiles /home/user
+    mv /.zenixarch /home/user
 
     # Setup bash
-    ln -sf /home/user/.dotfiles/bash/bashrc /home/user/.bashrc
-    ln -sf /home/user/.dotfiles/bash/bash_profile /home/user/.bash_profile
+    ln -sf /home/user/.zenixarch/dotfiles/bash/.bashrc /home/user/.bashrc
+    ln -sf /home/user/.zenixarch/dotfiles/bash/.bash_profile /home/user/.bash_profile
 
     # Setup firefox
     mkdir -p /home/user/.mozilla/firefox/user
-    ln -sf /home/user/.dotfiles/firefox/installs.ini /home/user/.mozilla/firefox/installs.ini
-    ln -sf /home/user/.dotfiles/firefox/profiles.ini /home/user/.mozilla/firefox/profiles.ini
+    ln -sf /home/user/.zenixarch/dotfiles/firefox/installs.ini /home/user/.mozilla/firefox/installs.ini
+    ln -sf /home/user/.zenixarch/dotfiles/firefox/profiles.ini /home/user/.mozilla/firefox/profiles.ini
     curl https://raw.githubusercontent.com/arkenfox/user.js/master/user.js > /home/user/.mozilla/firefox/user/user.js
-    cat /home/user/.dotfiles/firefox/user-overrides.js >> /home/user/.mozilla/firefox/user/user.js
+    cat /home/user/.zenixarch/dotfiles/firefox/user-overrides.js >> /home/user/.mozilla/firefox/user/user.js
 
     # Setup git
-    ln -sf /home/user/.dotfiles/git/gitconfig /home/user/.gitconfig
+    ln -sf /home/user/.zenixarch/dotfiles/git/.gitconfig /home/user/.gitconfig
 
     # Setup hyprland
     mkdir -p /home/user/.config/hypr
-    ln -sf /home/user/.dotfiles/hypr/hyprland.conf /home/user/.config/hypr/hyprland.conf
-    ln -sf /home/user/.dotfiles/hypr/hyprpaper.conf /home/user/.config/hypr/hyprpaper.conf
+    ln -sf /home/user/.zenixarch/dotfiles/hypr/hyprland.conf /home/user/.config/hypr/hyprland.conf
+    ln -sf /home/user/.zenixarch/dotfiles/hypr/hyprpaper.conf /home/user/.config/hypr/hyprpaper.conf
+    ln -sf /home/user/.zenixarch/dotfiles/hypr/sigiluw.png /home/user/.config/hypr/sigiluw.png
+    ln -sf /home/user/.zenixarch/dotfiles/hypr/sigilw.png /home/user/.config/hypr/sigilw.png
 
     # Setup neovim
     mkdir -p /home/user/.config/nvim
-    ln -sf /home/user/.dotfiles/nvim/init.lua /home/user/.config/nvim/init.lua
+    ln -sf /home/user/.zenixarch/dotfiles/nvim/init.lua /home/user/.config/nvim/init.lua
 
     # Setup custom.service
-    systemctl link /home/user/.dotfiles/systemd/custom.service
+    systemctl link /home/user/.zenixarch/systemd/custom.service
 
     # Ensure the user owns their own home
     chown -R user:user /home/user
