@@ -60,13 +60,27 @@ echo "$USER_PASS" | cryptsetup -q luksFormat -h sha512 -i 5000 -s 512 "/dev/${DI
 echo "$USER_PASS" | cryptsetup open "/dev/${DISK}p2" cryptroot
 
 # Format the container with Btrfs
-#     - No subvolumes because I just don't like them and I don't use snapshots
 mkfs.btrfs -f /dev/mapper/cryptroot
 
-# Mount the formatted partitions with optimized settings
-mount -o defaults,noatime,compress-force=zstd /dev/mapper/cryptroot /mnt
-mkdir -p /mnt/boot
-mount -o defaults,noatime "/dev/${DISK}p1" /mnt/boot
+# Create subvolumes
+mount /dev/mapper/cryptroot /mnt
+btrfs su cr /mnt/@
+btrfs su cr /mnt/@home
+btrfs su cr /mnt/@var_log
+btrfs su cr /mnt/@var_cache
+
+# Disable CoW where it can hurt performance
+chattr +C /mnt/@var_log
+chattr +C /mnt/@var_cache
+umount /mnt
+
+# Mount the partitions/subvolumes
+mount -o defaults,compress-force=zstd,noatime,subvol=@ /dev/mapper/cryptroot /mnt
+mkdir -p /mnt/{boot,home,var/log,var/cache}
+mount -o defaults,noatime,nodev,nosuid,noexec,umask=0077 "/dev/${DISK}p1" /mnt/boot
+mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,subvol=@home "${BTRFS}" /mnt/home
+mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_log /dev/mapper/cryptroot /mnt/var/log
+mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_cache /dev/mapper/cryptroot /mnt/var/cache
 
 
 ########### BOOTSTRAPPING ##########
@@ -247,6 +261,9 @@ CHROOT
 
 
 ########## SERVICES AND TIMERS ##########
+
+# Disable systemd-boot from creating /boot/loader/random-seed because we aren't using it
+systemctl mask systemd-boot-random-seed.service --root=/mnt
 
 # Disable NVIDIA services irrelevant to my desktop
 systemctl disable nvidia-hibernate --root=/mnt

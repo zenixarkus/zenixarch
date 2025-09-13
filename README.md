@@ -12,4 +12,4 @@ First ensure that Setup Mode for Secure Boot is on, then from the Arch ISO live 
 1. `iwctl --passphrase <wifi password> station <wifi interface> connect <wifi name>`
 2. `git clone https://github.com/zenixarkus/zenixarch.git`
 3. `cd zenixarch`
-4. `./zarchinstall -d <disk, like nvme0np1> -p <a strong password> -n <nextdns id>`
+4. `./zarchinstall -d <disk, like nvme0n1> -p <a strong password> -n <nextdns id>`
