@@ -171,8 +171,10 @@ system() {
     useradd -m user
     echo "user:$USER_PASS" | chpasswd
 
-    # Symlink .cache to tmp to wipe it on shutdown
+    # Symlink .cache and .local to tmp to wipe it on shutdown
+    #     - The .local symlink is just an experiment, I might revert it later, but for the time being I have no purpose for this folder
     ln -sfn /tmp /home/user/.cache
+    ln -sfn /tmp /home/user/.local
 
     # Mark deps
     pacman -D --asdeps noto-fonts pipewire-jack
