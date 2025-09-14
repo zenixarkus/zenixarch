@@ -164,98 +164,71 @@ sed -i 's/^#DNSOverTLS=.*/DNSOverTLS=yes/' /mnt/etc/systemd/resolved.conf
 
 ########## SYSTEM SETUP ##########
 
-system() {
-    # Set my timezone
-    ln -sf "/usr/share/zoneinfo/America/New_York" /etc/localtime
-
-    # Sync hardware clock to system clock
-    hwclock --systohc
-
-    # Enable NTP
-    timedatectl set-ntp true
-
-    # Generate the locale
-    locale-gen
-
-    # Lock root for extra security
-    passwd -l root
-
-    # Create a new user with a generic name
-    useradd -m user
-    echo "user:$USER_PASS" | chpasswd
-
-    # Symlink .cache and .local to tmp to wipe it on shutdown
-    #     - The .local symlink is just an experiment, I might revert it later, but for the time being I have no purpose for this folder
-    ln -sfn /tmp /home/user/.cache
-    ln -sfn /tmp /home/user/.local
-
-    # Mark deps
-    pacman -D --asdeps noto-fonts pipewire-jack
-
-    # Recreate the UKI as mkinitcpio.conf was changed
-    mkinitcpio -p linux
-
-    # Setup custom Secure Boot keys and sign the UKI
-    #     - I use sbctl's experimental TPM Eventlog method as just enrolling the keys alone stops my GPU's GOP driver initializing leaving me with no boot video until the kernel modules load, then it's just a framebuffer with no hardware acceleration
-    if sbctl status | grep -q "Setup Mode:.*Enabled"; then
-        sbctl create-keys
-        sbctl enroll-keys --tpm-eventlog
-        sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
-    else
-        printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
-    fi
-}
-
-
-########## DOTFILES SETUP ##########
-
 # Stage dotfiles into the new install
 cp -r "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" /mnt/.zenixarch/
 
-dotfiles() {
-    # Move the dotfiles into place
-    mv /.zenixarch /home/user
-
-    # Setup bash
-    ln -sf /home/user/.zenixarch/dotfiles/bash/.bashrc /home/user/.bashrc
-    ln -sf /home/user/.zenixarch/dotfiles/bash/.bash_profile /home/user/.bash_profile
-
-    # Setup firefox
-    mkdir -p /home/user/.mozilla/firefox/user
-    ln -sf /home/user/.zenixarch/dotfiles/firefox/installs.ini /home/user/.mozilla/firefox/installs.ini
-    ln -sf /home/user/.zenixarch/dotfiles/firefox/profiles.ini /home/user/.mozilla/firefox/profiles.ini
-    /home/user/.zenixarch/bin/userjs
-
-    # Setup git
-    ln -sf /home/user/.zenixarch/dotfiles/git/.gitconfig /home/user/.gitconfig
-
-    # Setup hyprland
-    mkdir -p /home/user/.config/hypr
-    ln -sf /home/user/.zenixarch/dotfiles/hypr/hyprland.conf /home/user/.config/hypr/hyprland.conf
-    ln -sf /home/user/.zenixarch/dotfiles/hypr/hyprpaper.conf /home/user/.config/hypr/hyprpaper.conf
-    ln -sf /home/user/.zenixarch/dotfiles/hypr/sigiluw.png /home/user/.config/hypr/sigiluw.png
-    ln -sf /home/user/.zenixarch/dotfiles/hypr/sigilw.png /home/user/.config/hypr/sigilw.png
-
-    # Setup neovim
-    mkdir -p /home/user/.config/nvim
-    ln -sf /home/user/.zenixarch/dotfiles/nvim/init.lua /home/user/.config/nvim/init.lua
-
-    # Setup custom services
-    #     - I will likely seperate wireguard setup later on as this service will fail on reboot unless you add any configs to /etc/wireguard/configs
-    systemctl link /home/user/.zenixarch/systemd/overclock.service
-    systemctl link /home/user/.zenixarch/systemd/rgb.service
-    systemctl link /home/user/.zenixarch/systemd/wg.service
-
-    # Ensure the user owns their own home
-    chown -R user:user /home/user
-}
-
-# I like doing this instead of a giant chroot heredoc preserve syntax highlighting
-export USER_PASS
-export -f system dotfiles
 arch-chroot /mnt /bin/bash -e <<CHROOT
-system
-dotfiles
+
+# Set my timezone
+ln -sf "/usr/share/zoneinfo/America/New_York" /etc/localtime
+
+# Sync hardware clock to system clock
+hwclock --systohc
+
+# Enable NTP
+timedatectl set-ntp true
+
+# Generate the locale
+locale-gen
+
+# Lock root for extra security
+passwd -l root
+
+# Create a new user with a generic name
+useradd -m user
+echo "user:$USER_PASS" | chpasswd
+
+# Symlink .cache and .local to tmp to wipe it on shutdown
+#     - The .local symlink is just an experiment, I might revert it later, but for the time being I have no purpose for this folder
+ln -sfn /tmp /home/user/.cache
+ln -sfn /tmp /home/user/.local
+
+# Mark deps
+pacman -D --asdeps noto-fonts pipewire-jack
+
+# Recreate the UKI as mkinitcpio.conf was changed
+mkinitcpio -p linux
+
+# Setup custom Secure Boot keys and sign the UKI
+#     - I use sbctl's experimental TPM Eventlog method as just enrolling the keys alone stops my GPU's GOP driver initializing leaving me with no boot video until the kernel modules load, then it's just a framebuffer with no hardware acceleration
+if sbctl status | grep -q "Setup Mode:.*Enabled"; then
+    sbctl create-keys
+    sbctl enroll-keys --tpm-eventlog
+    sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
+else
+    printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
+fi
+
+# Move the repository into place
+mv /.zenixarch /home/user
+
+# Set dotfiles
+mkdir -p /home/user/{.config/{hypr,nvim},.mozilla/firefox}
+rm /home/user/{.bashrc,.bash_profile}
+stow -t /home/user /home/user/.zenixarch/dotfiles
+
+# Create a user.js
+/home/user/.zenixarch/bin/userjs
+
+# Setup custom services
+#     - I will likely seperate wireguard setup later on as this service will fail on reboot unless you add any configs to /etc/wireguard/configs
+systemctl link /home/user/.zenixarch/systemd/overclock.service
+systemctl link /home/user/.zenixarch/systemd/rgb.service
+systemctl link /home/user/.zenixarch/systemd/wg.service
+
+# Ensure the user owns their own home
+chown -R user:user /home/user
+
 CHROOT
 
 
