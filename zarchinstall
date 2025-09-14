@@ -224,8 +224,7 @@ dotfiles() {
     mkdir -p /home/user/.mozilla/firefox/user
     ln -sf /home/user/.zenixarch/dotfiles/firefox/installs.ini /home/user/.mozilla/firefox/installs.ini
     ln -sf /home/user/.zenixarch/dotfiles/firefox/profiles.ini /home/user/.mozilla/firefox/profiles.ini
-    curl https://raw.githubusercontent.com/arkenfox/user.js/master/user.js > /home/user/.mozilla/firefox/user/user.js
-    cat /home/user/.zenixarch/dotfiles/firefox/user-overrides.js >> /home/user/.mozilla/firefox/user/user.js
+    /home/user/.zenixarch/bin/userjs
 
     # Setup git
     ln -sf /home/user/.zenixarch/dotfiles/git/.gitconfig /home/user/.gitconfig
