@@ -1,4 +1,5 @@
 #!/bin/bash
+
 curl https://raw.githubusercontent.com/arkenfox/user.js/master/user.js > /home/user/.mozilla/firefox/user/user.js
 cat >> /home/user/.mozilla/firefox/user/user.js <<'PREFS'
 
