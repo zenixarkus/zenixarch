@@ -12,7 +12,6 @@ keepassxc
 linux
 linux-firmware-intel
 linux-firmware-realtek
-make
 neovim
 nvidia
 opendoas

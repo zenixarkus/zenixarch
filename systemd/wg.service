@@ -8,7 +8,7 @@ ExecStart=/bin/bash -c '\
 if wg show; then \
     wg-quick down wg; \
 fi; \
-ln -sf "$(ls /etc/wireguard/configs/*.conf | shuf -n 1)" /etc/wireguard/wg.conf; \
+ln -sf "$(find /etc/wireguard/configs -maxdepth 1 -name '*.conf' -print | shuf -n 1)" /etc/wireguard/wg.conf; \
 wg-quick up wg; \
 '
 

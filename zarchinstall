@@ -1,0 +1,240 @@
+#!/bin/bash
+set -euo pipefail
+SCRIPTDIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+if ! [ "${EUID:-"$(id -u)"}" -eq 0 ]; then
+    echo "This script needs to be run as root"
+    exit 1
+fi
+
+########################################################################
+
+configuration() {
+
+# Set the hostname to something epic
+echo zenixark > /etc/hostname
+
+# Make the user a doas-er
+printf "permit persist user\n" > /etc/doas.conf
+chmod 600 /etc/doas.conf
+
+# Set kernel options
+#     - I also disable NVIDIA GSP Firmware in the kernel options thanks to stuttering in games
+mkdir -p /etc/kernel
+echo "cryptdevice=UUID=$(blkid -s UUID -o value "$(cryptsetup status cryptroot | awk '/device:/ {print $2}')"):cryptroot root=/dev/mapper/cryptroot rootflags=subvol=@ rw nvidia.NVreg_EnableGpuFirmware=0 nvidia.NVreg_UsePageAttributeTable=1" > /etc/kernel/cmdline
+
+# Create a Unified Kernel Image (UKI) preset
+#     - UKI's securitywise synergize well with Secure Boot and disk encryption to prevent initramfs tampering
+mkdir -p /{boot/EFI/BOOT,etc/mkinitcpio.d}
+cat > /etc/mkinitcpio.d/linux.preset <<UKI
+ALL_config="/etc/mkinitcpio.conf"
+ALL_kver="/usr/lib/modules/vmlinuz"
+PRESETS=('default')
+default_uki="/boot/EFI/BOOT/BOOTX64.EFI"
+default_options="--cmdline /etc/kernel/cmdline"
+UKI
+
+# Allow iwd to connect to the internet
+mkdir -p /etc/iwd
+cat > /etc/iwd/main.conf <<IWD
+[General]
+EnableNetworkConfiguration=true
+IWD
+
+# Set getty to autologin the user for convenience
+mkdir -p /etc/systemd/system/getty@tty1.service.d
+cat > /etc/systemd/system/getty@tty1.service.d/override.conf <<'GETTY'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty -o '-- \\u' --autologin user --noreset --noclear - $TERM
+GETTY
+
+# Configure PAM no-password login because there's little security loss for extra convenience
+sed -i '/pam_nologin.so/i auth       sufficient   pam_succeed_if.so user = user' /etc/pam.d/login
+
+# Enable colored output for pacman
+sed -i 's/^#\(Color\)/\1/' /etc/pacman.conf
+
+# Add encrypt to mkinitcpio hooks
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block encrypt filesystems fsck)/' /etc/mkinitcpio.conf
+
+# Fix ~/.pulse-cookie bug with Steam
+sed -i 's|^; cookie-file =.*|cookie-file = /home/user/.config/pulse/cookie|' /etc/pulse/client.conf
+
+# Disable coredumps as they're HUGE and I don't care about them
+sed -i 's/^#Storage=.*/Storage=none/' /etc/systemd/coredump.conf
+sed -i 's/^#ProcessSizeMax=.*/ProcessSizeMax=0/' /etc/systemd/coredump.conf
+
+# Configure my NextDNS profile via resolved
+sed -i "s|^#DNS=.*|DNS=45.90.28.0#$NEXTDNS.dns.nextdns.io DNS=45.90.30.0#$NEXTDNS.dns.nextdns.io DNS=2a07:a8c0::#$NEXTDNS.dns.nextdns.io DNS=2a07:a8c1::#$NEXTDNS.dns.nextdns.io|" /etc/systemd/resolved.conf
+sed -i 's/^#FallbackDNS=.*/FallbackDNS=/' /etc/systemd/resolved.conf
+sed -i 's/^#Domains=.*/Domains=~/' /etc/systemd/resolved.conf
+sed -i 's/^#DNSOverTLS=.*/DNSOverTLS=yes/' /etc/systemd/resolved.conf
+
+# Create a UKI
+mkinitcpio -p linux
+
+# Setup custom Secure Boot keys and sign the UKI
+#     - I use --tpm-eventlog because otherwise my GPU's GOP driver doesn't get initialized leaving me with no boot video until the gpu drivers load, then it's just a software rendered framebuffer
+if sbctl status | grep -q "Setup Mode:.*Enabled"; then
+    sbctl create-keys
+    sbctl enroll-keys --tpm-eventlog
+    sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
+else
+    printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
+fi
+
+# Symlink .cache and .local to tmp to wipe it on shutdown
+#     - The .local symlink is just an experiment, I might revert it later, but for the time being I have no purpose for this folder
+ln -sfn /tmp /home/user/.cache
+ln -sfn /tmp /home/user/.local
+
+# Set dotfiles
+mkdir -p /home/user/{.config/{hypr,nvim},.mozilla/firefox/user}
+rm /home/user/{.bashrc,.bash_profile}
+cd /home/user/.zenixarch
+stow -R -t /home/user dotfiles
+
+# Create a user.js for firefox
+/home/user/.zenixarch/bin/userjs
+
+# Ensure the user owns their own home
+chown -R user:user /home/user
+
+# Setup custom services
+systemctl link /home/user/.zenixarch/systemd/*
+
+# Enable filesystem maintainence timers
+systemctl enable fstrim.timer btrfs-scrub@-.timer
+
+# Prevent systemd-boot from creating /boot/loader/random-seed because it's unused
+systemctl mask systemd-boot-random-seed.service
+
+# Enable services in services.txt
+while read -r svc; do
+    [[ -n "$svc" ]] || continue
+    systemctl enable $NOW "$svc"
+done < /home/user/.zenixarch/services.txt
+
+# Disable services not in services.txt
+for svc in $(systemctl list-unit-files --type=service --state=enabled --no-legend | awk '{print $1}'); do
+    if ! grep -qx "$svc" /home/user/.zenixarch/services.txt; then
+        systemctl disable $NOW "$svc"
+    fi
+done
+
+}
+
+########################################################################
+
+# If the user is in a Live ISO, then run a full install
+if [ -d /run/archiso ]; then
+
+# Verify required variables
+: "$DISK:?" "$USER_PASS:?" "$NEXTDNS:?"
+
+# Verify intention
+read -rp $"\e[31mThis will wipe every little thing on your disk and reformat...\nAlso, you should know EVERYTHING this does before running it because it makes a LOT of assumptions...\nType 'IK' to continue: \e[0m" CONFIRM
+if [ "$CONFIRM" != "IK" ]; then
+    printf "\e[31mError: You didn't confirm you knew\e[0m"
+    exit 1
+fi
+
+# Check if affected partitions are already mounted
+if mountpoint -q /mnt; then
+    umount -R /mnt
+    cryptsetup close cryptroot
+fi
+
+# Wipe the disk and create a fresh partition scheme
+sgdisk --zap-all "/dev/$DISK"
+sgdisk -g "/dev/$DISK"
+sgdisk -n 1:0:+256M -t 1:ef00 -c 1:"EFI System" "/dev/$DISK"
+sgdisk -n 2:0:0 -t 2:8300 -c 2:"Linux filesystem" "/dev/$DISK"
+
+# Format the esp partition with FAT32
+mkfs.fat -F 32 "/dev/${DISK}1"
+
+# Create a hardened LUKS-encrypted container on the root partition
+echo "$USER_PASS" | cryptsetup -q luksFormat -h sha512 -i 5000 -s 512 "/dev/${DISK}2"
+echo "$USER_PASS" | cryptsetup open "/dev/${DISK}2" cryptroot
+
+# Format the container with Btrfs
+mkfs.btrfs -f /dev/mapper/cryptroot
+
+# Create subvolumes
+mount /dev/mapper/cryptroot /mnt
+btrfs su cr /mnt/@
+btrfs su cr /mnt/@home
+btrfs su cr /mnt/@var_log
+btrfs su cr /mnt/@var_cache
+
+# Disable CoW where it can hurt performance
+chattr +C /mnt/@var_log
+chattr +C /mnt/@var_cache
+umount /mnt
+
+# Mount the partitions/subvolumes
+mount -o defaults,compress-force=zstd,noatime,subvol=@ /dev/mapper/cryptroot /mnt
+mkdir -p /mnt/{boot,home,var/log,var/cache}
+mount -o defaults,noatime,nodev,nosuid,noexec,umask=0077 "/dev/${DISK}1" /mnt/boot
+mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,subvol=@home /dev/mapper/cryptroot /mnt/home
+mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_log /dev/mapper/cryptroot /mnt/var/log
+mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_cache /dev/mapper/cryptroot /mnt/var/cache
+
+# Optimize pacstrap DL speed and update the keyring
+reflector -c US -p https -a 12 -l 20 -f 5 --sort rate --save /etc/pacman.d/mirrorlist
+sed -i 's/^#\(ParallelDownloads = 5\)/\1/' /etc/pacman.conf
+pacman -S --noconfirm archlinux-keyring
+
+# Install the base system then my preferred packages
+cat "$SCRIPTDIR"/packages.txt | pacstrap /mnt -
+
+# Remove useless images as later the entire ESP will be /boot/EFI/BOOT/BOOTX64.EFI
+mv /mnt/boot/vmlinuz-linux /mnt/usr/lib/modules/vmlinuz
+rm -rf /mnt/boot/*
+
+# Set the filesystem table
+genfstab -U /mnt >> /mnt/etc/fstab
+
+# Stage this repo into the new install
+cp -r "$SCRIPTDIR" /mnt/.zenixarch/
+
+# Chroot into the new install
+arch-chroot /mnt /bin/bash -e <<CHROOT
+export NEXTDNS="$NEXTDNS" NOW=""
+$(declare -f configuration)
+
+# Configure time
+ln -sf "/usr/share/zoneinfo/America/New_York" /etc/localtime
+hwclock --systohc
+
+# Configure locale
+sed -i 's/^#\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen
+echo "LANG=en_US.UTF-8" > /etc/locale.conf
+locale-gen
+
+# Lock root for extra security
+passwd -l root
+
+# Create a new user with a generic name
+useradd -m user
+echo "user:$USER_PASS" | chpasswd
+
+# Move this repo into place
+mv /.zenixarch /home/user
+
+# Configure the system
+configuration
+CHROOT
+
+########################################################################
+
+# Or if the user is not in a Live ISO, skip the bootstrapping
+else
+    NOW="--now"
+    : "$NEXTDNS:?"
+    configuration
+fi
+
+printf "\e[32mDone!\e[0m\n"
