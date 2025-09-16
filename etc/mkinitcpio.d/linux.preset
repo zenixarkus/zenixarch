@@ -1,0 +1,5 @@
+ALL_config="/etc/mkinitcpio.conf"
+ALL_kver="/usr/lib/modules/vmlinuz"
+PRESETS=('default')
+default_uki="/boot/EFI/BOOT/BOOTX64.EFI"
+default_options="--cmdline /etc/kernel/cmdline"
