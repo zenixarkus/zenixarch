@@ -1,5 +1,10 @@
 #!/bin/bash
 
+## ============================================================
+## This script was originally made by ChatGPT a while back...
+## I plan on rewriting it from scratch later on whenever I care
+## ============================================================
+
 check() {
     declare -A package_map
     while read -r pkg; do

@@ -3,11 +3,9 @@
 curl https://raw.githubusercontent.com/arkenfox/user.js/master/user.js > /home/user/.mozilla/firefox/user/user.js
 cat >> /home/user/.mozilla/firefox/user/user.js <<'PREFS'
 
-/********************************************************************************
-* UI / MISC TWEAKS
-********************************************************************************/
+// ========== UI / MISC TWEAKS ==========
 
-// Sets my preferred toolbar layout
+// My preferred toolbar layout
 user_pref("browser.uiCustomization.state", "{\"placements\":{\"widget-overflow-fixed-list\":[],\"unified-extensions-area\":[],\"nav-bar\":[\"back-button\",\"forward-button\",\"vertical-spacer\",\"urlbar-container\",\"fxa-toolbar-menu-button\",\"ublock0_raymondhill_net-browser-action\",\"unified-extensions-button\"],\"toolbar-menubar\":[\"menubar-items\"],\"TabsToolbar\":[\"tabbrowser-tabs\"],\"vertical-tabs\":[],\"PersonalToolbar\":[\"personal-bookmarks\"]},\"seen\":[],\"dirtyAreaCache\":[],\"currentVersion\":23,\"newElementCount\":3}");
 
 // Disable ugly UI elements
@@ -15,31 +13,24 @@ user_pref("browser.tabs.inTitlebar", 0);
 user_pref("browser.toolbars.bookmarks.visibility", "never");
 user_pref("extensions.unifiedExtensions.button.always_visible", false);
 
-// Misc prefs
 user_pref("clipboard.autocopy", false);
 user_pref("middlemouse.paste", false);
 user_pref("browser.download.dir", "/home/user/");
 user_pref("browser.tabs.closeWindowWithLastTab", false);
 user_pref("browser.tabs.groups.enabled", false);
 
-/********************************************************************************
-* ADVANCED HARDENING
-********************************************************************************/
+// ========== ADVANCED HARDENING ==========
 
-// Enable RFP and letterboxing
-//     - 1600x900 appears to be the default size of a
-//       new window when letterboxing is on so I enforce it.
+// 1600x900 appears to be the default size of a new window when letterboxing is on so I enforce it.
 user_pref("privacy.resistFingerprinting", true);
 user_pref("privacy.resistFingerprinting.letterboxing", true);
 user_pref("privacy.resistFingerprinting.letterboxing.dimensions", "1600x900");
 
-// Disable IPv6
 user_pref("network.dns.disableIPv6", true);
 
-// Disable webgl
 user_pref("webgl.disabled", true);
 
-// This is supposed to stop firefox.settings.services.mozilla.com but it seems like it doesn't
+// Stop firefox.settings.services.mozilla.com, or it SHOULD but it seems like it doesn't
 user_pref("services.settings.server", "");
 
 // Stop push.services.mozilla.com
@@ -48,24 +39,19 @@ user_pref("dom.push.connection.enabled", false);
 // Stop location.services.mozilla.com
 user_pref("browser.region.network.url", "");
 
-// Disable updating add-ons automatically
-//     - uBlock does not update often enough to justify regular automatic connections
+// uBlock does not update often enough to justify regular automatic connections
 user_pref("extensions.update.autoUpdateDefault", false);
 user_pref("extensions.update.enabled", false);
 
-// Disable Firefox Sync/Accounts
 user_pref("identity.fxaccounts.enabled", false);
 
-// Disable fullpage translations
 user_pref("browser.translations.enable", false);
 
-// Disable DRM nonsense
 user_pref("media.gmp-manager.url", "data:text/plain,");
 user_pref("media.gmp-gmpopenh264.enabled", false);
 user_pref("media.gmp-provider.enabled", false);
 
-// Disable Google Safe Browsing
-//     - Google spyware does not compensate for a brain
+// Google spyware does not compensate for a brain
 user_pref("browser.safebrowsing.malware.enabled", false);
 user_pref("browser.safebrowsing.phishing.enabled", false);
 user_pref("browser.safebrowsing.downloads.enabled", false);
@@ -75,13 +61,9 @@ user_pref("browser.safebrowsing.provider.google4.updateURL", "");
 user_pref("browser.safebrowsing.provider.google.gethashURL", "");
 user_pref("browser.safebrowsing.provider.google.updateURL", "");
 
-// Limit cross-origin referrers
 user_pref("network.http.referer.XOriginPolicy", 2);
 
-
-/********************************************************************************
-* about:preferences#home
-********************************************************************************/
+// ========== about:preferences#home ==========
 
 // New Windows and Tabs
 user_pref("browser.startup.homepage", "chrome://browser/content/blanktab.html");
@@ -92,10 +74,7 @@ user_pref("browser.newtabpage.activity-stream.showSearch", false);
 user_pref("browser.newtabpage.activity-stream.feeds.topsites", false);
 user_pref("browser.newtabpage.activity-stream.showSponsoredCheckboxes", false);
 
-
-/********************************************************************************
-* about:preferences#search
-********************************************************************************/
+// ========== about:preferences#search ==========
 
 // Default Search Engine
 user_pref("browser.urlbar.showSearchTerms.enabled", false);
@@ -112,10 +91,7 @@ user_pref("browser.urlbar.suggest.topsites", false);
 user_pref("browser.urlbar.suggest.engines", false);
 user_pref("browser.urlbar.suggest.quickactions", false);
 
-
-/********************************************************************************
-* about:preferences#privacy
-********************************************************************************/
+// ========== about:preferences#privacy ==========
 
 // Enhanced Tracking Protection
 user_pref("privacy.trackingprotection.allow_list.baseline.enabled", false);

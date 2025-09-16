@@ -6,28 +6,26 @@ if ! [ "${EUID:-"$(id -u)"}" -eq 0 ]; then
     exit 1
 fi
 
-########################################################################
 
 configuration() {
 
-# Export the root partition UUID for /etc/kernel/cmdline
+## ========== /ETC ==========
+
 UUID=$(blkid -s UUID -o value "$(cryptsetup status cryptroot | awk '/device:/ {print $2}')")
 export UUID
 
-# Apply /etc configs
 find /home/user/.zenixarch/etc -type f | while read -r src; do
     mkdir -p "/etc/$(dirname "${src#/home/user/.zenixarch/etc/}")"
     envsubst < "$src" | tee "/etc/${src#/home/user/.zenixarch/etc/}"
 done
 
-# Set doas.conf perms
 chmod 600 /etc/doas.conf
 
-# Create a UKI
+## ========== /BOOT ==========
+
 mkinitcpio -p linux
 
-# Setup custom Secure Boot keys and sign the UKI
-#     - I use --tpm-eventlog because otherwise my GPU's GOP driver doesn't get initialized leaving me with no boot video until the gpu drivers load, then it's just a software rendered framebuffer
+## I use --tpm-eventlog because otherwise my GPU's GOP driver doesn't get initialized leaving me with no boot video until the gpu drivers load which then it's just a software rendered framebuffer
 if sbctl status | grep -q "Setup Mode:.*Enabled"; then
     sbctl create-keys
     sbctl enroll-keys --tpm-eventlog
@@ -36,39 +34,35 @@ else
     printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
 fi
 
-# Symlink .cache and .local to tmp to wipe it on shutdown
-#     - The .local symlink is just an experiment, I might revert it later, but for the time being I have no purpose for this folder
+## ========== /HOME/USER ==========
+
+## Symlink .cache and .local to tmp to wipe it on shutdown because I like it
+## The .local symlink is just an experiment, I might revert it later but for the time being I have no purpose for this folder
 ln -sfn /tmp /home/user/.cache
 ln -sfn /tmp /home/user/.local
 
-# Set dotfiles
 mkdir -p /home/user/{.config/{hypr,nvim},.mozilla/firefox/user}
 rm /home/user/{.bashrc,.bash_profile}
 cd /home/user/.zenixarch
 stow -R -t /home/user dotfiles
 
-# Create a user.js for firefox
 /home/user/.zenixarch/bin/userjs
 
-# Ensure the user owns their own home
 chown -R user:user /home/user
 
-# Setup custom services
+## ========== SYSTEMD SERVICES ==========
+
 systemctl link /home/user/.zenixarch/etc/systemd/system/*.service
 
-# Enable filesystem maintainence timers
 systemctl enable fstrim.timer btrfs-scrub@-.timer
 
-# Prevent systemd-boot from creating /boot/loader/random-seed because it's unused
 systemctl mask systemd-boot-random-seed.service
 
-# Enable services in services.txt
 while read -r svc; do
     [[ -n "$svc" ]] || continue
     systemctl enable $NOW "$svc"
 done < /home/user/.zenixarch/services.txt
 
-# Disable services not in services.txt
 for svc in $(systemctl list-unit-files --type=service --state=enabled --no-legend | awk '{print $1}'); do
     if ! grep -qx "$svc" /home/user/.zenixarch/services.txt; then
         systemctl disable $NOW "$svc"
@@ -77,56 +71,48 @@ done
 
 }
 
-########################################################################
 
-# If the user is in a Live ISO, then run a full install
+## If the user is in a Live ISO, then run a full install
 if [ -d /run/archiso ]; then
 
-# Verify required variables
 : "$DISK:?" "$USER_PASS:?" "$NEXTDNS:?"
 
-# Verify intention
-read -rp $"\e[31mThis will wipe every little thing on your disk and reformat...\nAlso, you should know EVERYTHING this does before running it because it makes a LOT of assumptions...\nType 'IK' to continue: \e[0m" CONFIRM
+read -rp $'\e[31mThis will wipe every little thing on your disk and reformat\n\e[31mAlso, you should know EVERYTHING this does before running it because it makes a LOT of assumptions\n\e[31mType "IK" to continue: \e[0m' CONFIRM
 if [ "$CONFIRM" != "IK" ]; then
     printf "\e[31mError: You didn't confirm you knew\e[0m"
     exit 1
 fi
 
-# Check if affected partitions are already mounted
+## ========== DISK CONFIGURATION ==========
+
 if mountpoint -q /mnt; then
     umount -R /mnt
     cryptsetup close cryptroot
 fi
 
-# Wipe the disk and create a fresh partition scheme
 sgdisk --zap-all "/dev/$DISK"
 sgdisk -g "/dev/$DISK"
 sgdisk -n 1:0:+256M -t 1:ef00 -c 1:"EFI System" "/dev/$DISK"
 sgdisk -n 2:0:0 -t 2:8300 -c 2:"Linux filesystem" "/dev/$DISK"
 
-# Format the esp partition with FAT32
 mkfs.fat -F 32 "/dev/${DISK}1"
 
-# Create a hardened LUKS-encrypted container on the root partition
 echo "$USER_PASS" | cryptsetup -q luksFormat -h sha512 -i 5000 -s 512 "/dev/${DISK}2"
 echo "$USER_PASS" | cryptsetup open "/dev/${DISK}2" cryptroot
 
-# Format the container with Btrfs
 mkfs.btrfs -f /dev/mapper/cryptroot
 
-# Create subvolumes
 mount /dev/mapper/cryptroot /mnt
 btrfs su cr /mnt/@
 btrfs su cr /mnt/@home
 btrfs su cr /mnt/@var_log
 btrfs su cr /mnt/@var_cache
 
-# Disable CoW where it can hurt performance
+## Disable CoW where it can hurt performance
 chattr +C /mnt/@var_log
 chattr +C /mnt/@var_cache
 umount /mnt
 
-# Mount the partitions/subvolumes
 mount -o defaults,compress-force=zstd,noatime,subvol=@ /dev/mapper/cryptroot /mnt
 mkdir -p /mnt/{boot,home,var/log,var/cache}
 mount -o defaults,noatime,nodev,nosuid,noexec,umask=0077 "/dev/${DISK}1" /mnt/boot
@@ -134,55 +120,45 @@ mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,subvol=@home /dev/map
 mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_log /dev/mapper/cryptroot /mnt/var/log
 mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_cache /dev/mapper/cryptroot /mnt/var/cache
 
-# Optimize pacstrap DL speed and update the keyring
+## ========== BOOTSTRAPPING ==========
+
 reflector -c US -p https -a 12 -l 20 -f 5 --sort rate --save /etc/pacman.d/mirrorlist
 sed -i 's/^#\(ParallelDownloads = 5\)/\1/' /etc/pacman.conf
 pacman -S --noconfirm archlinux-keyring
 
-# Install the base system then my preferred packages
 cat "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/packages.txt | pacstrap /mnt -
 
-# Remove useless images as later the entire ESP will be /boot/EFI/BOOT/BOOTX64.EFI
 mv /mnt/boot/vmlinuz-linux /mnt/usr/lib/modules/vmlinuz
 rm -rf /mnt/boot/*
 
-# Set the filesystem table
 genfstab -U /mnt >> /mnt/etc/fstab
 
-# Stage this repo into the new install
 cp -r "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" /mnt/.zenixarch/
 
-# Chroot into the new install
 arch-chroot /mnt /bin/bash -e <<CHROOT
 export NEXTDNS="$NEXTDNS" NOW=""
 $(declare -f configuration)
 
-# Configure time
 ln -sf "/usr/share/zoneinfo/America/New_York" /etc/localtime
 hwclock --systohc
 
-# Configure locale
 sed -i 's/^#\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen
 echo "LANG=en_US.UTF-8" > /etc/locale.conf
 locale-gen
 
-# Lock root for extra security
+## Lock root for extra security
 passwd -l root
 
-# Create a new user with a generic name
 useradd -m user
 echo "user:$USER_PASS" | chpasswd
 
-# Move this repo into place
 mv /.zenixarch /home/user
 
-# Configure the system
 configuration
 CHROOT
 
-########################################################################
 
-# Or if the user is not in a Live ISO, skip the bootstrapping
+## Or if the user is not in a Live ISO, skip the bootstrapping
 else
     NOW="--now"
     : "$NEXTDNS:?"
