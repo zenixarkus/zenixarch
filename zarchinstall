@@ -15,8 +15,12 @@ UUID=$(blkid -s UUID -o value "$(cryptsetup status cryptroot | awk '/device:/ {p
 export UUID
 
 find /home/user/.zenixarch/etc -type f | while read -r src; do
-    mkdir -p "/etc/$(dirname "${src#/home/user/.zenixarch/etc/}")"
-    envsubst < "$src" | tee "/etc/${src#/home/user/.zenixarch/etc/}"
+    if [[ "${src#/home/user/.zenixarch/etc/}" == systemd/system/*.service ]]; then
+        systemctl link "$src"
+    else
+        mkdir -p "/etc/$(dirname "${src#/home/user/.zenixarch/etc/}")"
+        envsubst < "$src" | tee "/etc/${src#/home/user/.zenixarch/etc/}"
+    fi
 done
 
 chmod 600 /etc/doas.conf
@@ -41,18 +45,17 @@ fi
 ln -sfn /tmp /home/user/.cache
 ln -sfn /tmp /home/user/.local
 
-mkdir -p /home/user/{.config/{hypr,nvim},.mozilla/firefox/user}
-rm /home/user/{.bashrc,.bash_profile}
-cd /home/user/.zenixarch
-stow -R -t /home/user dotfiles
+find /home/user/.zenixarch/dotfiles -type f | while read -r src; do
+    mkdir -p "/home/user/$(dirname "${src#/home/user/.zenixarch/dotfiles/}")"
+    ln -sf "${src}" "/home/user/${src#/home/user/.zenixarch/dotfiles/}"
+done
 
+mkdir -p /home/user/.mozilla/firefox/user
 /home/user/.zenixarch/bin/userjs
 
 chown -R user:user /home/user
 
 ## ========== SYSTEMD SERVICES ==========
-
-systemctl link /home/user/.zenixarch/etc/systemd/system/*.service
 
 systemctl enable fstrim.timer btrfs-scrub@-.timer
 
@@ -94,6 +97,8 @@ sgdisk --zap-all "/dev/$DISK"
 sgdisk -g "/dev/$DISK"
 sgdisk -n 1:0:+256M -t 1:ef00 -c 1:"EFI System" "/dev/$DISK"
 sgdisk -n 2:0:0 -t 2:8300 -c 2:"Linux filesystem" "/dev/$DISK"
+
+[[ "$DISK" =~ [0-9]$ ]] && DISK="${DISK}p"
 
 mkfs.fat -F 32 "/dev/${DISK}1"
 
