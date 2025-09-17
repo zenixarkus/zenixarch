@@ -13,9 +13,11 @@ linux
 linux-firmware-intel
 linux-firmware-realtek
 neovim
+noto-fonts
 nvidia
 opendoas
 openrgb
+pipewire-jack
 pipewire-pulse
 sbctl
 signal-desktop

@@ -12,12 +12,15 @@ configuration() {
     UUID=$(blkid -s UUID -o value "$(cryptsetup status cryptroot | awk '/device:/ {print $2}')")
     export UUID
 
+    tmp=$(mktemp)
     find /home/user/.zenixarch/etc -type f | while read -r src; do
         if [[ "${src#/home/user/.zenixarch/etc/}" == systemd/system/*.service ]]; then
             systemctl link "$src"
         else
-            mkdir -p "/etc/$(dirname "${src#/home/user/.zenixarch/etc/}")"
-            envsubst < "$src" | tee "/etc/${src#/home/user/.zenixarch/etc/}"
+            envsubst < "$src" > "$tmp"
+            if ! cmp -s "$tmp" "/etc/${src#/home/user/.zenixarch/etc/}"; then
+                install -Dm644 "$tmp" "/etc/${src#/home/user/.zenixarch/etc/}"
+            fi
         fi
     done
 
@@ -33,7 +36,7 @@ configuration() {
         sbctl enroll-keys --tpm-eventlog
         sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
     else
-        printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
+        printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\n\e[0m"
     fi
 
     ## ========== /HOME/USER ==========
@@ -44,11 +47,11 @@ configuration() {
     ln -sfn /tmp /home/user/.local
 
     find /home/user/.zenixarch/dotfiles -type f | while read -r src; do
-        mkdir -p "/home/user/$(dirname "${src#/home/user/.zenixarch/dotfiles/}")"
-        ln -sf "${src}" "/home/user/${src#/home/user/.zenixarch/dotfiles/}"
+        if ! cmp -s "$src" "/home/user/${src#/home/user/.zenixarch/dotfiles/}"; then
+            install -Dm644 "$src" "/home/user/${src#/home/user/.zenixarch/dotfiles/}"
+        fi
     done
 
-    mkdir -p /home/user/.mozilla/firefox/user
     /home/user/.zenixarch/bin/userjs
 
     chown -R user:user /home/user
@@ -73,7 +76,7 @@ configuration() {
 
 ## If the user is in a Live ISO, then run a full install
 if [ -d /run/archiso ]; then
-    : "$DISK:?" "$USER_PASS:?" "$NEXTDNS:?"
+    : "$DISK:?" "$PASS:?" "$NEXTDNS:?"
 
     read -rp $'\e[31mThis will wipe every little thing on your disk and reformat\n\e[31mAlso, you should know EVERYTHING this does before running it because it makes a LOT of assumptions\n\e[31mType "IK" to continue: \e[0m' CONFIRM
     if [ "$CONFIRM" != "IK" ]; then
@@ -97,8 +100,8 @@ if [ -d /run/archiso ]; then
 
     mkfs.fat -F 32 "/dev/${DISK}1"
 
-    echo "$USER_PASS" | cryptsetup -q luksFormat -h sha512 -i 5000 -s 512 "/dev/${DISK}2"
-    echo "$USER_PASS" | cryptsetup open "/dev/${DISK}2" cryptroot
+    echo "$PASS" | cryptsetup -q luksFormat -h sha512 -i 5000 -s 512 "/dev/${DISK}2"
+    echo "$PASS" | cryptsetup open "/dev/${DISK}2" cryptroot
 
     mkfs.btrfs -f /dev/mapper/cryptroot
 
@@ -128,7 +131,7 @@ if [ -d /run/archiso ]; then
 
     cat "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/packages.txt | pacstrap /mnt -
 
-    ## A UKI that contains the entire ESP will be created later so mkinitcpio created bloat
+    ## A UKI that contains the entire ESP will be created later so the mkinitcpio hook created bloat
     mv /mnt/boot/vmlinuz-linux /mnt/usr/lib/modules/vmlinuz
     rm -rf /mnt/boot/*
 
@@ -148,10 +151,11 @@ if [ -d /run/archiso ]; then
     locale-gen
 
     ## Lock root for extra security
+    echo "user:$PASS" | chpasswd
     passwd -l root
 
     useradd -m user
-    echo "user:$USER_PASS" | chpasswd
+    echo "user:$PASS" | chpasswd
 
     mv /.zenixarch /home/user
 

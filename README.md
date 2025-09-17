@@ -13,12 +13,12 @@ I liked the idea of declarative/idempotent systems such as NixOS and Ansible, so
 [**`zarchinstall`**](./zarchinstall) will skip a full install if it doesn't detect the live Arch ISO environment, but boot related /etc files assumes things configured in the full installation.
 1. `git clone https://github.com/zenixarkus/zenixarch.git ~/.zenixarch`
 2. `cd ~/.zenixarch`
-3. `NEXTDNS=<nextdns id> ./zarchinstall`
+3. `doas env NEXTDNS=<nextdns id> ./zarchinstall`
 
 ## Full installation
 First ensure that Setup Mode for Secure Boot is on, then from the Arch ISO live environment:
 1. `iwctl --passphrase <wifi password> station <wifi interface> connect <wifi name>`
 2. `git clone https://github.com/zenixarkus/zenixarch.git`
 3. `cd zenixarch`
-4. `DISK=<e.g sda or nvme0n> USER_PASS=<a strong password> NEXTDNS=<nextdns id> ./zarchinstall`
+4. `DISK=<e.g sda or nvme0n> PASS=<a strong password> NEXTDNS=<nextdns id> ./zarchinstall`
 5. `reboot now`

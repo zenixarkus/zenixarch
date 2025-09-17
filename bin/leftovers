@@ -106,6 +106,7 @@ filters=(
     "/etc/iptables"
     "/etc/issue"
     "/etc/iwd"
+    "/etc/kernel"
     "/etc/krb5.conf"
     "/etc/ld.so.cache"
     "/etc/ld.so.conf"
