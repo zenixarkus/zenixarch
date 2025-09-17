@@ -6,162 +6,157 @@ if ! [ "${EUID:-"$(id -u)"}" -eq 0 ]; then
     exit 1
 fi
 
-
 configuration() {
+    ## ========== /ETC ==========
 
-## ========== /ETC ==========
+    UUID=$(blkid -s UUID -o value "$(cryptsetup status cryptroot | awk '/device:/ {print $2}')")
+    export UUID
 
-UUID=$(blkid -s UUID -o value "$(cryptsetup status cryptroot | awk '/device:/ {print $2}')")
-export UUID
+    find /home/user/.zenixarch/etc -type f | while read -r src; do
+        if [[ "${src#/home/user/.zenixarch/etc/}" == systemd/system/*.service ]]; then
+            systemctl link "$src"
+        else
+            mkdir -p "/etc/$(dirname "${src#/home/user/.zenixarch/etc/}")"
+            envsubst < "$src" | tee "/etc/${src#/home/user/.zenixarch/etc/}"
+        fi
+    done
 
-find /home/user/.zenixarch/etc -type f | while read -r src; do
-    if [[ "${src#/home/user/.zenixarch/etc/}" == systemd/system/*.service ]]; then
-        systemctl link "$src"
+    chmod 600 /etc/doas.conf
+
+    ## ========== /BOOT ==========
+
+    mkinitcpio -p linux
+
+    ## I use --tpm-eventlog because otherwise my GPU's GOP driver doesn't get initialized leaving me with no boot video until the gpu drivers load which then it's just a software rendered framebuffer
+    if sbctl status | grep -q "Setup Mode:.*Enabled"; then
+        sbctl create-keys
+        sbctl enroll-keys --tpm-eventlog
+        sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
     else
-        mkdir -p "/etc/$(dirname "${src#/home/user/.zenixarch/etc/}")"
-        envsubst < "$src" | tee "/etc/${src#/home/user/.zenixarch/etc/}"
+        printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
     fi
-done
 
-chmod 600 /etc/doas.conf
+    ## ========== /HOME/USER ==========
 
-## ========== /BOOT ==========
+    ## Symlink .cache and .local to tmp because I like it
+    ## The .local symlink is just an experiment, I might revert it later but for the time being I have no purpose for it's existence
+    ln -sfn /tmp /home/user/.cache
+    ln -sfn /tmp /home/user/.local
 
-mkinitcpio -p linux
+    find /home/user/.zenixarch/dotfiles -type f | while read -r src; do
+        mkdir -p "/home/user/$(dirname "${src#/home/user/.zenixarch/dotfiles/}")"
+        ln -sf "${src}" "/home/user/${src#/home/user/.zenixarch/dotfiles/}"
+    done
 
-## I use --tpm-eventlog because otherwise my GPU's GOP driver doesn't get initialized leaving me with no boot video until the gpu drivers load which then it's just a software rendered framebuffer
-if sbctl status | grep -q "Setup Mode:.*Enabled"; then
-    sbctl create-keys
-    sbctl enroll-keys --tpm-eventlog
-    sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
-else
-    printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
-fi
+    mkdir -p /home/user/.mozilla/firefox/user
+    /home/user/.zenixarch/bin/userjs
 
-## ========== /HOME/USER ==========
+    chown -R user:user /home/user
 
-## Symlink .cache and .local to tmp to wipe it on shutdown because I like it
-## The .local symlink is just an experiment, I might revert it later but for the time being I have no purpose for this folder
-ln -sfn /tmp /home/user/.cache
-ln -sfn /tmp /home/user/.local
+    ## ========== SYSTEMD SERVICES ==========
 
-find /home/user/.zenixarch/dotfiles -type f | while read -r src; do
-    mkdir -p "/home/user/$(dirname "${src#/home/user/.zenixarch/dotfiles/}")"
-    ln -sf "${src}" "/home/user/${src#/home/user/.zenixarch/dotfiles/}"
-done
+    systemctl enable fstrim.timer btrfs-scrub@-.timer
 
-mkdir -p /home/user/.mozilla/firefox/user
-/home/user/.zenixarch/bin/userjs
+    systemctl mask systemd-boot-random-seed.service
 
-chown -R user:user /home/user
+    while read -r svc; do
+        [[ -n "$svc" ]] || continue
+        systemctl enable $NOW "$svc"
+    done < /home/user/.zenixarch/services.txt
 
-## ========== SYSTEMD SERVICES ==========
-
-systemctl enable fstrim.timer btrfs-scrub@-.timer
-
-systemctl mask systemd-boot-random-seed.service
-
-while read -r svc; do
-    [[ -n "$svc" ]] || continue
-    systemctl enable $NOW "$svc"
-done < /home/user/.zenixarch/services.txt
-
-for svc in $(systemctl list-unit-files --type=service --state=enabled --no-legend | awk '{print $1}'); do
-    if ! grep -qx "$svc" /home/user/.zenixarch/services.txt; then
-        systemctl disable $NOW "$svc"
-    fi
-done
-
+    for svc in $(systemctl list-unit-files --type=service --state=enabled --no-legend | awk '{print $1}'); do
+        if ! grep -qx "$svc" /home/user/.zenixarch/services.txt; then
+            systemctl disable $NOW "$svc"
+        fi
+    done
 }
-
 
 ## If the user is in a Live ISO, then run a full install
 if [ -d /run/archiso ]; then
+    : "$DISK:?" "$USER_PASS:?" "$NEXTDNS:?"
 
-: "$DISK:?" "$USER_PASS:?" "$NEXTDNS:?"
+    read -rp $'\e[31mThis will wipe every little thing on your disk and reformat\n\e[31mAlso, you should know EVERYTHING this does before running it because it makes a LOT of assumptions\n\e[31mType "IK" to continue: \e[0m' CONFIRM
+    if [ "$CONFIRM" != "IK" ]; then
+        printf "\e[31mError: You didn't confirm you knew\e[0m"
+        exit 1
+    fi
 
-read -rp $'\e[31mThis will wipe every little thing on your disk and reformat\n\e[31mAlso, you should know EVERYTHING this does before running it because it makes a LOT of assumptions\n\e[31mType "IK" to continue: \e[0m' CONFIRM
-if [ "$CONFIRM" != "IK" ]; then
-    printf "\e[31mError: You didn't confirm you knew\e[0m"
-    exit 1
-fi
+    ## ========== DISK CONFIGURATION ==========
 
-## ========== DISK CONFIGURATION ==========
+    if mountpoint -q /mnt; then
+        umount -R /mnt
+        cryptsetup close cryptroot
+    fi
 
-if mountpoint -q /mnt; then
-    umount -R /mnt
-    cryptsetup close cryptroot
-fi
+    sgdisk --zap-all "/dev/$DISK"
+    sgdisk -g "/dev/$DISK"
+    sgdisk -n 1:0:+256M -t 1:ef00 -c 1:"EFI System" "/dev/$DISK"
+    sgdisk -n 2:0:0 -t 2:8300 -c 2:"Linux filesystem" "/dev/$DISK"
 
-sgdisk --zap-all "/dev/$DISK"
-sgdisk -g "/dev/$DISK"
-sgdisk -n 1:0:+256M -t 1:ef00 -c 1:"EFI System" "/dev/$DISK"
-sgdisk -n 2:0:0 -t 2:8300 -c 2:"Linux filesystem" "/dev/$DISK"
+    [[ "$DISK" =~ [0-9]$ ]] && DISK="${DISK}p"
 
-[[ "$DISK" =~ [0-9]$ ]] && DISK="${DISK}p"
+    mkfs.fat -F 32 "/dev/${DISK}1"
 
-mkfs.fat -F 32 "/dev/${DISK}1"
+    echo "$USER_PASS" | cryptsetup -q luksFormat -h sha512 -i 5000 -s 512 "/dev/${DISK}2"
+    echo "$USER_PASS" | cryptsetup open "/dev/${DISK}2" cryptroot
 
-echo "$USER_PASS" | cryptsetup -q luksFormat -h sha512 -i 5000 -s 512 "/dev/${DISK}2"
-echo "$USER_PASS" | cryptsetup open "/dev/${DISK}2" cryptroot
+    mkfs.btrfs -f /dev/mapper/cryptroot
 
-mkfs.btrfs -f /dev/mapper/cryptroot
+    mount /dev/mapper/cryptroot /mnt
+    btrfs su cr /mnt/@
+    btrfs su cr /mnt/@home
+    btrfs su cr /mnt/@var_log
+    btrfs su cr /mnt/@var_cache
 
-mount /dev/mapper/cryptroot /mnt
-btrfs su cr /mnt/@
-btrfs su cr /mnt/@home
-btrfs su cr /mnt/@var_log
-btrfs su cr /mnt/@var_cache
+    ## Disable CoW where it can hurt performance
+    chattr +C /mnt/@var_log
+    chattr +C /mnt/@var_cache
+    umount /mnt
 
-## Disable CoW where it can hurt performance
-chattr +C /mnt/@var_log
-chattr +C /mnt/@var_cache
-umount /mnt
+    mount -o defaults,compress-force=zstd,noatime,subvol=@ /dev/mapper/cryptroot /mnt
+    mkdir -p /mnt/{boot,home,var/log,var/cache}
+    mount -o defaults,noatime,nodev,nosuid,noexec,umask=0077 "/dev/${DISK}1" /mnt/boot
+    mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,subvol=@home /dev/mapper/cryptroot /mnt/home
+    mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_log /dev/mapper/cryptroot /mnt/var/log
+    mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_cache /dev/mapper/cryptroot /mnt/var/cache
 
-mount -o defaults,compress-force=zstd,noatime,subvol=@ /dev/mapper/cryptroot /mnt
-mkdir -p /mnt/{boot,home,var/log,var/cache}
-mount -o defaults,noatime,nodev,nosuid,noexec,umask=0077 "/dev/${DISK}1" /mnt/boot
-mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,subvol=@home /dev/mapper/cryptroot /mnt/home
-mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_log /dev/mapper/cryptroot /mnt/var/log
-mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_cache /dev/mapper/cryptroot /mnt/var/cache
+    ## ========== BOOTSTRAPPING ==========
 
-## ========== BOOTSTRAPPING ==========
+    reflector -c US -p https -a 12 -l 20 -f 5 --sort rate --save /etc/pacman.d/mirrorlist
+    sed -i 's/^#\(ParallelDownloads = 5\)/\1/' /etc/pacman.conf
+    pacman -S --noconfirm archlinux-keyring
 
-reflector -c US -p https -a 12 -l 20 -f 5 --sort rate --save /etc/pacman.d/mirrorlist
-sed -i 's/^#\(ParallelDownloads = 5\)/\1/' /etc/pacman.conf
-pacman -S --noconfirm archlinux-keyring
+    cat "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/packages.txt | pacstrap /mnt -
 
-cat "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/packages.txt | pacstrap /mnt -
+    ## A UKI that contains the entire ESP will be created later so mkinitcpio created bloat
+    mv /mnt/boot/vmlinuz-linux /mnt/usr/lib/modules/vmlinuz
+    rm -rf /mnt/boot/*
 
-mv /mnt/boot/vmlinuz-linux /mnt/usr/lib/modules/vmlinuz
-rm -rf /mnt/boot/*
+    genfstab -U /mnt >> /mnt/etc/fstab
 
-genfstab -U /mnt >> /mnt/etc/fstab
+    cp -r "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" /mnt/.zenixarch/
 
-cp -r "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" /mnt/.zenixarch/
+    arch-chroot /mnt /bin/bash -e <<CHROOT
+    export NEXTDNS="$NEXTDNS" NOW=""
+    $(declare -f configuration)
 
-arch-chroot /mnt /bin/bash -e <<CHROOT
-export NEXTDNS="$NEXTDNS" NOW=""
-$(declare -f configuration)
+    ln -sf "/usr/share/zoneinfo/America/New_York" /etc/localtime
+    hwclock --systohc
 
-ln -sf "/usr/share/zoneinfo/America/New_York" /etc/localtime
-hwclock --systohc
+    sed -i 's/^#\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen
+    echo "LANG=en_US.UTF-8" > /etc/locale.conf
+    locale-gen
 
-sed -i 's/^#\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen
-echo "LANG=en_US.UTF-8" > /etc/locale.conf
-locale-gen
+    ## Lock root for extra security
+    passwd -l root
 
-## Lock root for extra security
-passwd -l root
+    useradd -m user
+    echo "user:$USER_PASS" | chpasswd
 
-useradd -m user
-echo "user:$USER_PASS" | chpasswd
+    mv /.zenixarch /home/user
 
-mv /.zenixarch /home/user
-
-configuration
+    configuration
 CHROOT
-
 
 ## Or if the user is not in a Live ISO, skip the bootstrapping
 else
