@@ -91,6 +91,10 @@ if [ -d /run/archiso ]; then
         cryptsetup close cryptroot
     fi
 
+    if nvme id-ns -H "/dev/$DISK" | grep -q "LBA Format  1.*Data Size: 4096"; then
+        nvme format --lbaf=1 --force "/dev/$DISK"
+    fi
+
     sgdisk --zap-all "/dev/$DISK"
     sgdisk -g "/dev/$DISK"
     sgdisk -n 1:0:+256M -t 1:ef00 -c 1:"EFI System" "/dev/$DISK"
@@ -110,18 +114,21 @@ if [ -d /run/archiso ]; then
     btrfs su cr /mnt/@home
     btrfs su cr /mnt/@var_log
     btrfs su cr /mnt/@var_cache
+    btrfs su cr /mnt/@var_lib_libvirt_images
 
     ## Disable CoW where it can hurt performance
     chattr +C /mnt/@var_log
     chattr +C /mnt/@var_cache
+    chattr +C /mnt/@var_lib_libvirt_images
     umount /mnt
 
     mount -o defaults,compress-force=zstd,noatime,subvol=@ /dev/mapper/cryptroot /mnt
-    mkdir -p /mnt/{boot,home,var/log,var/cache}
+    mkdir -p /mnt/{boot,home,var/{log,cache,lib/libvirt/images}}
     mount -o defaults,noatime,nodev,nosuid,noexec,umask=0077 "/dev/${DISK}1" /mnt/boot
     mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,subvol=@home /dev/mapper/cryptroot /mnt/home
     mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_log /dev/mapper/cryptroot /mnt/var/log
     mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_cache /dev/mapper/cryptroot /mnt/var/cache
+    mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_lib_libvirt_images /dev/mapper/cryptroot /mnt/var/lib/libvirt/images
 
     ## ========== BOOTSTRAPPING ==========
 
