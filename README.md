@@ -1,6 +1,8 @@
 # ⚙️ Zenixark's Arch Linux Setup
 **My entire minimalist Arch system reproducible featuring Btrfs/LUKS, UKI + Secure Boot, firewall rules, DNS, WireGuard, firefox user.js, dotfiles, overclocks, and MUCH more**
 
+> This project's home is [**zenixark.com**](https://zenixark.com/zenixark/zenixarch), but mirror(s) can be found on [**GitHub**](https://github.com/zenixarkus/zenixarch)
+
 This repo contains every tweak I have made to Arch Linux, mostly focused on privacy, security, and minimalism. I liked the idea of declarative/idempotent systems such as NixOS and Ansible, so I thought to myself: why not make my Arch installation reproducible too?
 
 ## 🛠️ Usage
@@ -18,11 +20,15 @@ iwctl --passphrase <wifi password> station <wifi interface> connect <wifi name>
 ## 2. Install git
 pacman -Sy git
 
-## 3. Clone the repo and run the installer
+## 3. Clone the repo
 git clone https://github.com/zenixarkus/zenixarch.git
+# or alternatively
+git clone https://zenixark.com/zenixark/zenixarch.git
+
+## 4. Run the installer
 cd zenixarch
 DISK=<e.g sda or nvme0n1> PASS=<a strong password> NEXTDNS=<nextdns id> ./zarchinstall
 
-## 4. After rebooting, this can be run repeatedly to apply new changes idempotently
+## 5. After rebooting, this can be run repeatedly to apply new changes idempotently
 doas env NEXTDNS=<nextdns id> ./zarchinstall
 ```
