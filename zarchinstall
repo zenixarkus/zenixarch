@@ -36,7 +36,7 @@ configuration() {
         sbctl enroll-keys --tpm-eventlog
         sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
     else
-        printf "\e[33mSkipping Secure Boot as it is not in Setup Mode\n\e[0m"
+        echo -e "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
     fi
 
     ## ========== /HOME/USER ==========
@@ -80,7 +80,7 @@ if [ -d /run/archiso ]; then
 
     read -rp $'\e[31mThis will wipe every little thing on your disk and reformat\n\e[31mAlso, you should know EVERYTHING this does before running it because it makes a LOT of assumptions\n\e[31mType "IK" to continue: \e[0m' CONFIRM
     if [ "$CONFIRM" != "IK" ]; then
-        printf "\e[31mError: You didn't confirm you knew\e[0m"
+        echo -e "\e[31mError: You didn't confirm you knew\e[0m"
         exit 1
     fi
 
@@ -169,4 +169,4 @@ else
     configuration
 fi
 
-printf "\e[32mDone!\e[0m\n"
+echo -e "\e[32mDone!\e[0m"

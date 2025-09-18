@@ -20,9 +20,9 @@ export HISTFILESIZE=20000
 
 alias mssd='doas cryptsetup open /dev/sda3 cryptext && doas mount /dev/mapper/cryptext /mnt'
 alias ussd='doas umount -R /mnt && doas cryptsetup close cryptext'
+alias reddit='while curl -s https://old.reddit.com | grep -q "Your request has been blocked"; do doas systemctl start wireguard; sleep 1; done'
 
 alias sudo='doas'
-
 alias mv='mv -i'
 alias cp='cp -i'
 alias rm='rm -i'
@@ -31,6 +31,10 @@ alias grep='grep --color=auto'
 
 cd() {
     builtin cd "$@" && ls
+}
+
+prune() {
+    tac ~/.bash_history | awk '!seen[$0]++' | tac > ~/.bash_history.new && mv ~/.bash_history.new ~/.bash_history
 }
 
 extract() {
