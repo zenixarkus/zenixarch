@@ -7,65 +7,35 @@ if ! [ "${EUID:-"$(id -u)"}" -eq 0 ]; then
 fi
 
 configuration() {
-    ## ========== /ETC ==========
-
-    UUID=$(blkid -s UUID -o value "$(cryptsetup status cryptroot | awk '/device:/ {print $2}')")
-    export UUID
-
-    tmp=$(mktemp)
-    find /home/user/.zenixarch/etc -type f | while read -r src; do
-        if [[ "${src#/home/user/.zenixarch/etc/}" == systemd/system/*.service ]]; then
+    find /home/user/.zenixarch/{etc,home,var} -type f | while read -r src; do
+        if [[ "$src" == /home/user/.zenixarch/etc/systemd/system/*.service ]]; then
             systemctl link "$src"
-        elif [[ "${src#/home/user/.zenixarch/etc/}" == adguardhome.yaml ]]; then
-            if ! cmp -s "$src" /var/lib/private/adguardhome/AdGuardHome.yaml; then
-                install -Dm600 "$src" /var/lib/private/adguardhome/AdGuardHome.yaml
-                chown nobody:nobody /var/lib/private/adguardhome/AdGuardHome.yaml
-            fi
         else
-            envsubst < "$src" > "$tmp"
-            if ! cmp -s "$tmp" "/etc/${src#/home/user/.zenixarch/etc/}"; then
-                install -Dm644 "$tmp" "/etc/${src#/home/user/.zenixarch/etc/}"
+            if ! cmp -s "$src" "/${src#/home/user/.zenixarch/}"; then
+                install -Dm644 "$src" "/${src#/home/user/.zenixarch/}"
             fi
         fi
     done
 
-    chmod 600 /etc/doas.conf
+    sed -i "s|\${UUID}|$(blkid -s UUID -o value "$(cryptsetup status cryptroot | awk '/device:/ {print $2}')")|g" /etc/kernel/cmdline
 
-    ## ========== /BOOT ==========
+    /home/user/.zenixarch/bin/userjs
 
-    mkinitcpio -p linux
-
-    ## I use --tpm-eventlog because otherwise my GPU's GOP driver doesn't get initialized leaving me with no boot video until the gpu drivers load which then it's just a software rendered framebuffer
-    if sbctl status | grep -q "Setup Mode:.*Enabled"; then
-        sbctl create-keys
-        sbctl enroll-keys --tpm-eventlog
-        sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
-    else
-        echo -e "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
-    fi
-
-    ## ========== /HOME/USER ==========
-
-    ## Symlink .cache and .local to tmp because I like it
     ## The .local symlink is just an experiment, I might revert it later but for the time being I have no purpose for it's existence
     ln -sfn /tmp /home/user/.cache
     ln -sfn /tmp /home/user/.local
 
-    find /home/user/.zenixarch/dotfiles -type f | while read -r src; do
-        if ! cmp -s "$src" "/home/user/${src#/home/user/.zenixarch/dotfiles/}"; then
-            install -Dm644 "$src" "/home/user/${src#/home/user/.zenixarch/dotfiles/}"
-        fi
-    done
-
-    /home/user/.zenixarch/bin/userjs
-
+    chmod 600 /etc/doas.conf /var/lib/private/adguardhome/AdGuardHome.yaml
+    chown -R nobody:nobody /var/lib/private/adguardhome
     chown -R user:user /home/user
 
-    ## ========== SYSTEMD SERVICES ==========
+    cat /home/user/.zenixarch/packages.txt | pacman -Syu --noconfirm --needed -
 
-    systemctl enable fstrim.timer btrfs-scrub@-.timer
-
-    systemctl mask systemd-boot-random-seed.service
+    for pkg in $(pacman -Qqe); do
+        if ! grep -qx "$pkg" /home/user/.zenixarch/packages.txt; then
+            pacman -Rcns --noconfirm "$pkg"
+        fi
+    done
 
     while read -r svc; do
         [[ -n "$svc" ]] || continue
@@ -77,6 +47,21 @@ configuration() {
             systemctl disable $NOW "$svc"
         fi
     done
+
+    systemctl enable fstrim.timer btrfs-scrub@-.timer
+
+    systemctl mask systemd-boot-random-seed.service
+
+    mkinitcpio -p linux
+
+    ## I use --tpm-eventlog because otherwise my GPU's GOP driver doesn't get initialized leaving me with no boot video until the gpu drivers load which then it's just a software rendered framebuffer
+    if sbctl status | grep -q "Setup Mode:.*Enabled"; then
+        sbctl create-keys
+        sbctl enroll-keys --tpm-eventlog
+        sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI
+    else
+        echo -e "\e[33mSkipping Secure Boot as it is not in Setup Mode\e[0m"
+    fi
 }
 
 ## If the user is in a Live ISO, then run a full install
@@ -88,8 +73,6 @@ if [ -d /run/archiso ]; then
         echo -e "\e[31mError: You didn't confirm you knew\e[0m"
         exit 1
     fi
-
-    ## ========== DISK CONFIGURATION ==========
 
     if mountpoint -q /mnt; then
         umount -R /mnt
@@ -134,8 +117,6 @@ if [ -d /run/archiso ]; then
     mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_log /dev/mapper/cryptroot /mnt/var/log
     mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_cache /dev/mapper/cryptroot /mnt/var/cache
     mount -o defaults,compress-force=zstd,noatime,nodev,nosuid,noexec,subvol=@var_lib_libvirt_images /dev/mapper/cryptroot /mnt/var/lib/libvirt/images
-
-    ## ========== BOOTSTRAPPING ==========
 
     reflector -c US -p https -a 12 -l 20 -f 5 --sort rate --save /etc/pacman.d/mirrorlist
     sed -i 's/^#\(ParallelDownloads = 5\)/\1/' /etc/pacman.conf
