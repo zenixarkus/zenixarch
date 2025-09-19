@@ -1,9 +1,9 @@
+adguardhome.service
 getty@.service
 ip6tables.service
 iptables.service
 iwd.service
 overclock.service
 rgb.service
-systemd-resolved.service
 systemd-timesyncd.service
 wireguard.service

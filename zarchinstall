@@ -16,6 +16,11 @@ configuration() {
     find /home/user/.zenixarch/etc -type f | while read -r src; do
         if [[ "${src#/home/user/.zenixarch/etc/}" == systemd/system/*.service ]]; then
             systemctl link "$src"
+        elif [[ "${src#/home/user/.zenixarch/etc/}" == adguardhome.yaml ]]; then
+            if ! cmp -s "$src" /var/lib/private/adguardhome/AdGuardHome.yaml; then
+                install -Dm600 "$src" /var/lib/private/adguardhome/AdGuardHome.yaml
+                chown nobody:nobody /var/lib/private/adguardhome/AdGuardHome.yaml
+            fi
         else
             envsubst < "$src" > "$tmp"
             if ! cmp -s "$tmp" "/etc/${src#/home/user/.zenixarch/etc/}"; then
@@ -76,7 +81,7 @@ configuration() {
 
 ## If the user is in a Live ISO, then run a full install
 if [ -d /run/archiso ]; then
-    : "$DISK:?" "$PASS:?" "$NEXTDNS:?"
+    : "$DISK:?" "$PASS:?"
 
     read -rp $'\e[31mThis will wipe every little thing on your disk and reformat\n\e[31mAlso, you should know EVERYTHING this does before running it because it makes a LOT of assumptions\n\e[31mType "IK" to continue: \e[0m' CONFIRM
     if [ "$CONFIRM" != "IK" ]; then
@@ -147,7 +152,7 @@ if [ -d /run/archiso ]; then
     cp -r "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" /mnt/.zenixarch/
 
     arch-chroot /mnt /bin/bash -e <<CHROOT
-    export NEXTDNS="$NEXTDNS" NOW=""
+    export NOW=""
     $(declare -f configuration)
 
     ln -sf "/usr/share/zoneinfo/America/New_York" /etc/localtime
@@ -172,7 +177,6 @@ CHROOT
 ## Or if the user is not in a Live ISO, skip the bootstrapping
 else
     NOW="--now"
-    : "$NEXTDNS:?"
     configuration
 fi
 

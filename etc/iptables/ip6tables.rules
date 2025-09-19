@@ -19,8 +19,8 @@
 -A OUTPUT -p tcp -m tcp --dport 80 -j ACCEPT
 -A OUTPUT -p tcp -m tcp --dport 443 -j ACCEPT
 -A OUTPUT -p udp -m udp --dport 443 -j ACCEPT
--A OUTPUT -p tcp -m tcp --dport 853 -j ACCEPT
 -A OUTPUT -p udp -m udp --dport 123 -j ACCEPT
+-A OUTPUT -p udp -m udp --dport 7844 -j ACCEPT
 -A OUTPUT -p udp -m udp --dport 51820 -j ACCEPT
 -A LOGGING_FORWARD -m limit --limit 5/min -j LOG --log-prefix "[DROP(6) FWD] "
 -A LOGGING_FORWARD -j DROP

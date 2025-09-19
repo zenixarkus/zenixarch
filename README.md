@@ -27,8 +27,8 @@ git clone https://zenixark.com/zenixark/zenixarch.git
 
 ## 4. Run the installer
 cd zenixarch
-DISK=<e.g sda or nvme0n1> PASS=<a strong password> NEXTDNS=<nextdns id> ./zarchinstall
+DISK=<e.g sda or nvme0n1> PASS=<a strong password> ./zarchinstall
 
 ## 5. After rebooting, this can be run repeatedly to apply new changes idempotently
-doas env NEXTDNS=<nextdns id> ./zarchinstall
+doas ./zarchinstall
 ```
