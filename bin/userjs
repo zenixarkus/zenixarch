@@ -50,6 +50,11 @@ user_pref("media.gmp-manager.url", "data:text/plain,");
 user_pref("media.gmp-gmpopenh264.enabled", false);
 user_pref("media.gmp-provider.enabled", false);
 
+user_pref("browser.ml.enable", false);
+user_pref("browser.ml.chat.enabled", false);
+user_pref("extensions.ml.enabled", false);
+user_pref("browser.tabs.groups.smart.userEnabled", false);
+
 // Google spyware does not compensate for a brain
 user_pref("browser.safebrowsing.malware.enabled", false);
 user_pref("browser.safebrowsing.phishing.enabled", false);
